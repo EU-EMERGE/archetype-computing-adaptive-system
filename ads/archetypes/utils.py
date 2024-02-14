@@ -2,6 +2,77 @@ import torch
 import numpy as np
 
 
+def sparse_eye_init(M: int) -> torch.FloatTensor:
+    """ Generates an M x M matrix to be used as sparse identity matrix for the
+    re-scaling of the sparse recurrent kernel in presence of non-zero leakage.
+    The neurons are connected according to a ring topology, where each neuron
+    receives input only from one neuron and propagates its activation only to
+    one other neuron. All the non-zero elements are set to 1.
+
+    :param M: number of hidden units
+    :return: dense weight matrix
+    """
+    dense_shape = torch.Size([M, M])
+
+    # gives the shape of a ring matrix:
+    indices = torch.zeros((M, 2), dtype=torch.long)
+    for i in range(M):
+        indices[i, :] = i
+    values = torch.ones(M)
+    return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
+
+
+def sparse_tensor_init(M: int, N: int, C: int = 1) -> torch.FloatTensor:
+    """ Generates an M x N matrix to be used as sparse (input) kernel
+    For each row only C elements are non-zero (i.e., each input dimension is
+    projected only to C neurons). The non-zero elements are generated randomly
+    from a uniform distribution in [-1,1]
+
+    :param M: number of rows
+    :param N: number of columns
+    :param C: number of nonzero elements
+    :return: MxN dense matrix
+    """
+    dense_shape = torch.Size([M, N])  # shape of the dense version of the matrix
+    indices = torch.zeros((M * C, 2), dtype=torch.long)
+    k = 0
+    for i in range(M):
+        # the indices of non-zero elements in the i-th row of the matrix
+        idx = np.random.choice(N, size=C, replace=False)
+        for j in range(C):
+            indices[k, 0] = i
+            indices[k, 1] = idx[j]
+            k = k + 1
+    values = 2 * (2 * np.random.rand(M * C).astype('f') - 1)
+    values = torch.from_numpy(values)
+    return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
+
+
+def sparse_recurrent_tensor_init(M: int, C: int = 1) -> torch.FloatTensor:
+    """ Generates an M x M matrix to be used as sparse recurrent kernel.
+    For each column only C elements are non-zero (i.e., each recurrent neuron
+    take sinput from C other recurrent neurons). The non-zero elements are
+    generated randomly from a uniform distribution in [-1,1].
+
+    :param M: number of hidden units
+    :param C: number of nonzero elements
+    :return: MxM dense matrix
+    """
+    assert M >= C
+    dense_shape = torch.Size([M, M])  # the shape of the dense version of the matrix
+    indices = torch.zeros((M * C, 2), dtype=torch.long)
+    k = 0
+    for i in range(M):
+        # the indices of non-zero elements in the i-th column of the matrix
+        idx = np.random.choice(M, size=C, replace=False)
+        for j in range(C):
+            indices[k, 0] = idx[j]
+            indices[k, 1] = i
+            k = k + 1
+    values = 2 * (2 * np.random.rand(M * C).astype('f') - 1)
+    values = torch.from_numpy(values)
+    return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
+
 def spectral_norm_scaling(W: torch.FloatTensor, rho_desired: float) -> torch.FloatTensor:
     """ Rescales W to have rho(W) = rho_desired
 

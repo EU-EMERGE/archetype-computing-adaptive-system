@@ -1,16 +1,21 @@
-import torch
+from typing import Literal
+
 import numpy as np
+import torch
 
 
 def sparse_eye_init(M: int) -> torch.FloatTensor:
-    """ Generates an M x M matrix to be used as sparse identity matrix for the
-    re-scaling of the sparse recurrent kernel in presence of non-zero leakage.
-    The neurons are connected according to a ring topology, where each neuron
-    receives input only from one neuron and propagates its activation only to
-    one other neuron. All the non-zero elements are set to 1.
+    """Generates an M x M matrix to be used as sparse identity matrix for the re-scaling
+    of the sparse recurrent kernel in presence of non-zero leakage. The neurons are
+    connected according to a ring topology, where each neuron receives input only from
+    one neuron and propagates its activation only to one other neuron. All the non-zero
+    elements are set to 1.
 
-    :param M: number of hidden units
-    :return: dense weight matrix
+    Args:
+        M (int): number of hidden units.
+
+    Returns:
+        torch.FloatTensor: MxM identity matrix.
     """
     dense_shape = torch.Size([M, M])
 
@@ -23,15 +28,17 @@ def sparse_eye_init(M: int) -> torch.FloatTensor:
 
 
 def sparse_tensor_init(M: int, N: int, C: int = 1) -> torch.FloatTensor:
-    """ Generates an M x N matrix to be used as sparse (input) kernel
-    For each row only C elements are non-zero (i.e., each input dimension is
-    projected only to C neurons). The non-zero elements are generated randomly
-    from a uniform distribution in [-1,1]
+    """Generates an M x N matrix to be used as sparse (input) kernel For each row only C
+    elements are non-zero (i.e., each input dimension is projected only to C neurons).
+    The non-zero elements are generated randomly from a uniform distribution in [-1,1]
 
-    :param M: number of rows
-    :param N: number of columns
-    :param C: number of nonzero elements
-    :return: MxN dense matrix
+    Args:
+        M (int): number of hidden units
+        N (int): number of input units
+        C (int): number of nonzero elements
+
+    Returns:
+        torch.FloatTensor: MxN dense matrix
     """
     dense_shape = torch.Size([M, N])  # shape of the dense version of the matrix
     indices = torch.zeros((M * C, 2), dtype=torch.long)
@@ -43,20 +50,23 @@ def sparse_tensor_init(M: int, N: int, C: int = 1) -> torch.FloatTensor:
             indices[k, 0] = i
             indices[k, 1] = idx[j]
             k = k + 1
-    values = 2 * (2 * np.random.rand(M * C).astype('f') - 1)
+    values = 2 * (2 * np.random.rand(M * C).astype("f") - 1)
     values = torch.from_numpy(values)
     return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
 
 
 def sparse_recurrent_tensor_init(M: int, C: int = 1) -> torch.FloatTensor:
-    """ Generates an M x M matrix to be used as sparse recurrent kernel.
-    For each column only C elements are non-zero (i.e., each recurrent neuron
-    take sinput from C other recurrent neurons). The non-zero elements are
-    generated randomly from a uniform distribution in [-1,1].
+    """Generates an M x M matrix to be used as sparse recurrent kernel. For each column
+    only C elements are non-zero (i.e., each recurrent neuron take sinput from C other
+    recurrent neurons). The non-zero elements are generated randomly from a uniform
+    distribution in [-1,1].
 
-    :param M: number of hidden units
-    :param C: number of nonzero elements
-    :return: MxM dense matrix
+    Args:
+        M (int): number of hidden units
+        C (int): number of nonzero elements
+
+    Returns:
+        torch.FloatTensor: MxM dense matrix
     """
     assert M >= C
     dense_shape = torch.Size([M, M])  # the shape of the dense version of the matrix
@@ -69,56 +79,81 @@ def sparse_recurrent_tensor_init(M: int, C: int = 1) -> torch.FloatTensor:
             indices[k, 0] = idx[j]
             indices[k, 1] = i
             k = k + 1
-    values = 2 * (2 * np.random.rand(M * C).astype('f') - 1)
+    values = 2 * (2 * np.random.rand(M * C).astype("f") - 1)
     values = torch.from_numpy(values)
     return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
 
-def spectral_norm_scaling(W: torch.FloatTensor, rho_desired: float) -> torch.FloatTensor:
-    """ Rescales W to have rho(W) = rho_desired
 
-    :param W:
-    :param rho_desired:
-    :return:
+def spectral_norm_scaling(
+    W: torch.FloatTensor, rho_desired: float
+) -> torch.FloatTensor:
+    """Rescales W to have rho(W) = rho_desired .
+
+    Args:
+        W (torch.FloatTensor): input matrix to be rescaled
+        rho_desired (float): desired spectral radius
+
+    Returns:
+        torch.FloatTensor: rescaled matrix
     """
     e, _ = np.linalg.eig(W.cpu())
     rho_curr = max(abs(e))
     return W * (rho_desired / rho_curr)
 
 
-def get_hidden_topology(n_hid, topology, sparsity, scaler):
+def get_hidden_topology(
+    n_hid: int,
+    topology: Literal["full", "lower", "orthogonal", "band", "ring", "toeplitz"],
+    sparsity: float,
+    scaler: float,
+) -> torch.FloatTensor:
+    """Generates the hidden-to-hidden weight matrix according to the specified topology
+    and sparsity.
+
+    Args:
+        n_hid (int): number of hidden units.
+        topology (str): topology of the hidden-to-hidden weight matrix. Options
+            are 'full', 'lower', 'orthogonal', 'band', 'ring', 'toeplitz'.
+        sparsity (float): sparsity of the hidden-to-hidden weight matrix.
+        scaler (float): scaling factor for the hidden-to-hidden weight matrix.
+
+    Returns:
+        torch.Tensor: hidden-to-hidden weight matrix.
+    """
+
     def get_sparsity(A):
         n_hid = A.shape[0]
-        sparsity = 100 * (n_hid ** 2 - np.count_nonzero(A)) / n_hid ** 2
+        sparsity = 100 * (n_hid**2 - np.count_nonzero(A)) / n_hid**2
         return sparsity
 
-    if topology == 'full':
+    if topology == "full":
         h2h = 2 * (2 * torch.rand(n_hid, n_hid) - 1)
-    elif topology == 'lower':
+    elif topology == "lower":
         h2h = torch.tril(2 * torch.rand(n_hid, n_hid) - 1)
         if sparsity > 0:
             n_zeroed_diagonals = int(sparsity * n_hid)
-            for i in range(n_hid-1, n_hid - n_zeroed_diagonals - 1, -1):
+            for i in range(n_hid - 1, n_hid - n_zeroed_diagonals - 1, -1):
                 h2h.diagonal(-i).zero_()
         get_sparsity(h2h.numpy())
-    elif topology == 'orthogonal':
+    elif topology == "orthogonal":
         rand = torch.rand(n_hid, n_hid)
         orth = torch.linalg.qr(rand)[0]
         identity = torch.eye(n_hid)
         if sparsity > 0:
             n_zeroed_rows = int(sparsity * n_hid)
             idxs = torch.randperm(n_hid)[:n_zeroed_rows].tolist()
-            identity[idxs, idxs] = 0.
+            identity[idxs, idxs] = 0.0
         h2h = torch.matmul(identity, orth)
         get_sparsity(h2h.numpy())
-    elif topology == 'band':
-        h2h = 2*torch.rand(n_hid, n_hid)-1
+    elif topology == "band":
+        h2h = 2 * torch.rand(n_hid, n_hid) - 1
         if sparsity > 0:
             n_zeroed_diagonals = int(np.sqrt(sparsity) * n_hid)
-            for i in range(n_hid-1, n_hid - n_zeroed_diagonals - 1, -1):
+            for i in range(n_hid - 1, n_hid - n_zeroed_diagonals - 1, -1):
                 h2h.diagonal(-i).zero_()
                 h2h.diagonal(i).zero_()
         get_sparsity(h2h.numpy())
-    elif topology == 'ring':
+    elif topology == "ring":
         # scaler = 1
         h2h = torch.zeros(n_hid, n_hid)
         for i in range(1, n_hid):
@@ -126,8 +161,9 @@ def get_hidden_topology(n_hid, topology, sparsity, scaler):
         h2h[0, n_hid - 1] = 1
         h2h = scaler * h2h
         get_sparsity(h2h.numpy())
-    elif topology == 'toeplitz':
+    elif topology == "toeplitz":
         from scipy.linalg import toeplitz
+
         bandwidth = int(scaler)  # 5
         upperdiagcoefs = np.zeros(n_hid)
         upperdiagcoefs[:bandwidth] = 2 * torch.rand(bandwidth) - 1
@@ -138,5 +174,7 @@ def get_hidden_topology(n_hid, topology, sparsity, scaler):
         get_sparsity(h2h)
         h2h = torch.Tensor(h2h)
     else:
-        raise ValueError("Wrong topology choice.")
+        raise ValueError(
+            "Invalid topology. Options are 'full', 'lower', 'orthogonal', 'band', 'ring', 'toeplitz'"
+        )
     return h2h

@@ -38,8 +38,8 @@ The logging functionalities remain the same across the three experiments. Each e
 The project requires Python 3. To install the acds package, it is sufficient to run
 the following lines of code:
 ```bash
-    git clone https//github.com/AndreaCossu/ArchetypeComputingAdaptiveSystem
-    cd ArchetypeComputingAdaptiveSystem
+    git clone https//github.com/EU-EMERGE/archetype-computing-adaptive-system
+    cd archetype-computing-adaptive-system
     make install
 ```
 

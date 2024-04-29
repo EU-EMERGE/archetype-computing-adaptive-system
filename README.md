@@ -43,7 +43,13 @@ the following lines of code:
     make install
 ```
 
+If you have already an environment with all the dependencies, you can use the library by directly adding the main project folder to your PYTHONPATH:  
+```bash
+    export PYTHONPATH=$PYTHONPATH:/path/to/archetype-computing-adaptive-system
+```
+
 If you want to run the sMNIST experiment with the RON model you can run:
 ```bash
-    python experiments/smnist.py --ron
+    python experiments/smnist.py --ron --dataroot /path/where/to/download/mnist
 ```
+

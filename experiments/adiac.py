@@ -1,6 +1,7 @@
 import argparse
+import warnings
 from typing import List
-
+import os
 import numpy as np
 import torch.nn.utils
 from sklearn import preprocessing
@@ -16,6 +17,7 @@ from acds.benchmarks import get_adiac_data
 
 parser = argparse.ArgumentParser(description="training parameters")
 parser.add_argument("--dataroot", type=str)
+parser.add_argument("--resultroot", type=str)
 parser.add_argument(
     "--n_hid", type=int, default=256, help="hidden size of recurrent net"
 )
@@ -74,7 +76,12 @@ parser.add_argument(
 
 main_folder = "result"
 args = parser.parse_args()
-print(args)
+
+assert args.dataroot is not None, "No dataroot provided."
+if args.resultroot is None:
+    warnings.warn("No resultroot provided. Using current location as default.")
+    args.resultroot = os.getcwd()
+
 
 assert 1.0 > args.sparsity >= 0.0, "Sparsity in [0, 1)"
 

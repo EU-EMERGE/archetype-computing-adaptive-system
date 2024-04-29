@@ -1,5 +1,6 @@
 import argparse
-
+import os
+import warnings
 import numpy as np
 import torch.nn.utils
 from sklearn import preprocessing
@@ -15,6 +16,7 @@ from acds.benchmarks import get_mnist_data
 
 parser = argparse.ArgumentParser(description="training parameters")
 parser.add_argument("--dataroot", type=str)
+parser.add_argument("--resultroot", type=str)
 parser.add_argument(
     "--n_hid", type=int, default=256, help="hidden size of recurrent net"
 )
@@ -73,7 +75,13 @@ parser.add_argument(
 
 main_folder = "result"
 args = parser.parse_args()
-print(args)
+
+if args.dataroot is None:
+    warnings.warn("No dataroot provided. Using current location as default.")
+    args.dataroot = os.getcwd()
+if args.resultroot is None:
+    warnings.warn("No resultroot provided. Using current location as default.")
+    args.resultroot = os.getcwd()
 
 assert 1.0 > args.sparsity >= 0.0, "Sparsity in [0, 1)"
 

@@ -10,6 +10,7 @@ from tqdm import tqdm
 from acds.archetypes import (
     DeepReservoir,
     RandomizedOscillatorsNetwork,
+    PhysicallyImplementableRandomizedOscillatorsNetwork,
 )
 from acds.benchmarks import get_adiac_data
 
@@ -46,6 +47,7 @@ parser.add_argument(
 parser.add_argument("--cpu", action="store_true")
 parser.add_argument("--esn", action="store_true")
 parser.add_argument("--ron", action="store_true")
+parser.add_argument('--pron', action="store_true")
 parser.add_argument("--inp_scaling", type=float, default=1.0, help="ESN input scaling")
 parser.add_argument("--rho", type=float, default=0.99, help="ESN spectral radius")
 parser.add_argument("--leaky", type=float, default=1.0, help="ESN spectral radius")
@@ -107,6 +109,7 @@ epsilon = (
 
 max_test_accs: List[float] = []
 if args.trials > 1:
+    assert args.use_test, "Multiple runs are only for the final test phase with the test set."
     train_loader, valid_loader, test_loader = get_adiac_data(
         args.dataroot, args.batch, args.batch, whole_train=True
     )
@@ -142,7 +145,16 @@ for i in range(args.trials):
             reservoir_scaler=args.reservoir_scaler,
             device=device,
         ).to(device)
-
+    elif args.pron:
+        model = PhysicallyImplementableRandomizedOscillatorsNetwork(
+            n_inp,
+            args.n_hid,
+            args.dt,
+            gamma,
+            epsilon,
+            args.inp_scaling,
+            device=device
+        ).to(device)
     else:
         raise ValueError("Wrong model choice.")
 
@@ -166,6 +178,8 @@ for i in range(args.trials):
 
 if args.ron:
     f = open(f"{main_folder}/Adiac_log_RON_{args.topology}.txt", "a")
+elif args.pron:
+    f = open(f"{main_folder}/Adiac_log_PRON.txt", "a")
 elif args.esn:
     f = open(f"{main_folder}/Adiac_log_ESN.txt", "a")
 else:

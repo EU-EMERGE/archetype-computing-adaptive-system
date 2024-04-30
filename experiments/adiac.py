@@ -81,6 +81,8 @@ assert args.dataroot is not None, "No dataroot provided."
 if args.resultroot is None:
     warnings.warn("No resultroot provided. Using current location as default.")
     args.resultroot = os.getcwd()
+assert os.path.exists(args.resultroot), \
+    f"{args.resultroot} folder does not exist, please create it and run the script again."
 
 
 assert 1.0 > args.sparsity >= 0.0, "Sparsity in [0, 1)"

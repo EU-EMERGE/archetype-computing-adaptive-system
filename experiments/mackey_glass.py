@@ -15,7 +15,8 @@ from acds.benchmarks import get_mackey_glass
 
 parser = argparse.ArgumentParser(description="training parameters")
 
-parser.add_argument("--dataroot", type=str)
+parser.add_argument("--dataroot", type=str,
+                    help="Path to the folder containing the mackey_glass.csv dataset")
 parser.add_argument("--resultroot", type=str)
 parser.add_argument(
     "--n_hid", type=int, default=100, help="hidden size of recurrent net"
@@ -80,6 +81,9 @@ assert args.dataroot is not None, "No dataroot provided"
 if args.resultroot is None:
     warnings.warn("No resultroot provided. Using current location as default.")
     args.resultroot = os.getcwd()
+
+assert os.path.exists(args.resultroot), \
+    f"{args.resultroot} folder does not exist, please create it and run the script again."
 
 assert 1.0 > args.sparsity >= 0.0, "Sparsity in [0, 1)"
 

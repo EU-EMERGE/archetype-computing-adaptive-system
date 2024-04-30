@@ -3,19 +3,19 @@ import os
 import torch
 
 
-def get_mackey_glass(csvpath: os.PathLike, lag=84, washout=200):
+def get_mackey_glass(csvfolder: os.PathLike, lag=84, washout=200):
     """Get the Mackey-Glass dataset and return the train, validation and test datasets
     as torch tensors.
 
     Args:
-        csvpath (os.PathLike): Path to the csv file containing the Mackey-Glass dataset.
+        csvfolder (os.PathLike): Path to the directory containing the mackey_glass.csv file.
         lag (int, optional): Number of time steps to look back. Defaults to 84.
         washout (int, optional): Number of time steps to discard. Defaults to 200.
 
     Returns:
         Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]: Train, validation and test datasets.
     """
-    with open(csvpath, "r") as f:
+    with open(os.path.join(csvfolder, "mackey_glass.csv"), "r") as f:
         data_lines = f.readlines()[0]
 
     # 10k steps

@@ -53,3 +53,11 @@ If you want to run the sMNIST experiment with the RON model you can run:
     python experiments/smnist.py --ron --dataroot /path/where/to/download/mnist
 ```
 
+## Dataset directory
+The library provides a directory to store raw datasets. The path is `acds/benchmarks/raw`.  
+The directory contains the `adiac` folder where both train and test examples for Adiac are stored. 
+It also contains the `mackey_glass.csv` file, where the Mackey-Glass dataset is saved. 
+You can point the `dataroot` parameter to this directory to use the datasets provided or to download the dataset there (when automatic download is possible, like for MNIST).
+
+## Results
+Results of the experiments are saved within the `resultroot` directory, provided as parameter to each script. Remember to create the directory before using it.

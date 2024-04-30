@@ -73,7 +73,6 @@ parser.add_argument(
     help="Scaler in case of ring/band/toeplitz reservoir",
 )
 
-main_folder = "result"
 args = parser.parse_args()
 
 if args.dataroot is None:
@@ -181,11 +180,11 @@ for i in range(args.trials):
     test_accs.append(test_acc)
 
 if args.ron:
-    f = open(f"{main_folder}/sMNIST_log_RON_{args.topology}.txt", "a")
+    f = open(os.path.join(args.resultroot, f"sMNIST_log_RON_{args.topology}.txt"), "a")
 elif args.pron:
-    f = open(f"{main_folder}/sMNIST_log_PRON.txt", "a")
+    f = open(os.path.join(args.resultroot, "sMNIST_log_PRON.txt"), "a")
 elif args.esn:
-    f = open(f"{main_folder}/sMNIST_log_ESN.txt", "a")
+    f = open(os.path.join(args.resultroot, "sMNIST_log_ESN.txt"), "a")
 else:
     raise ValueError("Wrong model choice.")
 

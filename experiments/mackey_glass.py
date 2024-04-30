@@ -87,8 +87,6 @@ assert os.path.exists(args.resultroot), \
 
 assert 1.0 > args.sparsity >= 0.0, "Sparsity in [0, 1)"
 
-main_folder = "result"
-
 device = (
     torch.device("cuda")
     if torch.cuda.is_available() and not args.cpu
@@ -190,11 +188,11 @@ for i in range(args.trials):
     test_mse.append(test_nmse)
 
 if args.ron:
-    f = open(f"{main_folder}/MG_log_RON_{args.topology}.txt", "a")
+    f = open(os.path.join(args.resultroot, f"MG_log_RON_{args.topology}.txt"), "a")
 elif args.pron:
-    f = open(f"{main_folder}/MG_log_PRON.txt", "a")
+    f = open(os.path.join(args.resultroot, "MG_log_PRON.txt"), "a")
 elif args.esn:
-    f = open(f"{main_folder}/MG_log_ESN.txt", "a")
+    f = open(os.path.join(args.resultroot, "MG_log_ESN.txt"), "a")
 else:
     raise ValueError("Wrong model choice.")
 

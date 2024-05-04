@@ -6,20 +6,42 @@ class PhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
     """
     Batch-first (B, L, I)
     """
-    def __init__(self, n_inp, n_hid, dt, gamma, epsilon, input_scaling, device='cpu',
-                 fading=False):
+    def __init__(self, n_inp, n_hid, dt, gamma, epsilon, input_scaling, device='cpu'):
+        """
+
+        Args:
+            n_inp:
+            n_hid:
+            dt:
+            gamma:
+            epsilon:
+            input_scaling:
+            device:
+        """
         super().__init__()
 
         self.n_hid = n_hid
         self.device = device
-        self.fading = fading
         self.dt = dt
 
-        gamma_min, gamma_max = gamma
-        self.gamma = torch.rand(n_hid, requires_grad=False, device=device) * (gamma_max - gamma_min) + gamma_min
-
-        eps_min, eps_max = epsilon
-        self.epsilon = torch.rand(n_hid, requires_grad=False, device=device) * (eps_max - eps_min) + eps_min
+        if isinstance(gamma, tuple):
+            gamma_min, gamma_max = gamma
+            self.gamma = (
+                torch.rand(n_hid, requires_grad=False, device=device)
+                * (gamma_max - gamma_min)
+                + gamma_min
+            )
+        else:
+            self.gamma = gamma
+        if isinstance(epsilon, tuple):
+            eps_min, eps_max = epsilon
+            self.epsilon = (
+                torch.rand(n_hid, requires_grad=False, device=device)
+                * (eps_max - eps_min)
+                + eps_min
+            )
+        else:
+            self.epsilon = epsilon
 
         h2h = torch.empty(n_hid, n_hid, device=device)
         nn.init.orthogonal_(h2h)
@@ -51,3 +73,77 @@ class PhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
             all_states.append(hy)
 
         return torch.stack(all_states, dim=1), [hy]
+
+
+class MultistablePhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
+    def __init__(self, n_inp, n_hid, dt, gamma, epsilon, input_scaling, device='cpu'):
+        super().__init__()
+
+        assert n_hid % 2 == 0, "n_hid must be even"
+
+        self.n_hid = n_hid
+        self.device = device
+        self.dt = dt
+
+        if isinstance(gamma, tuple):
+            gamma_min, gamma_max = gamma
+            self.gamma = (
+                    torch.rand(n_hid, requires_grad=False, device=device)
+                    * (gamma_max - gamma_min)
+                    + gamma_min
+            )
+        else:
+            self.gamma = gamma
+        if isinstance(epsilon, tuple):
+            eps_min, eps_max = epsilon
+            self.epsilon = (
+                    torch.rand(n_hid, requires_grad=False, device=device)
+                    * (eps_max - eps_min)
+                    + eps_min
+            )
+        else:
+            self.epsilon = epsilon
+
+        h2ht = torch.empty(int(n_hid/2), int(n_hid/2), device=device)
+        h2hl = torch.empty(int(n_hid/2), int(n_hid/2), device=device)
+        nn.init.orthogonal_(h2ht)
+        nn.init.orthogonal_(h2hl)
+        h2htinv = h2ht.T
+        h2hlinv = h2hl.T
+
+        h2h = torch.zeros(n_hid, n_hid, device=device)
+        h2h[:int(n_hid/2), :int(n_hid/2)] = h2ht
+        h2h[int(n_hid/2):, int(n_hid/2):] = h2hl
+
+        h2hinv = torch.zeros(n_hid, n_hid, device=device)
+        h2hinv[:int(n_hid/2), :int(n_hid/2)] = h2htinv
+        h2hinv[int(n_hid/2):, int(n_hid/2):] = h2hlinv
+
+        self.h2h = nn.Parameter(h2h, requires_grad=False)
+        self.h2hinv = nn.Parameter(h2hinv, requires_grad=False)
+
+        x2h = torch.rand(n_inp, n_hid) * input_scaling
+        self.x2h = nn.Parameter(x2h, requires_grad=False)
+        bias = (torch.rand(n_hid) * 2 - 1) * input_scaling
+        self.bias = nn.Parameter(bias, requires_grad=False)
+
+    def cell(self, x, hy, hz):
+        i2h = torch.matmul(x, self.x2h)
+        h2h = torch.matmul(hy, self.h2h) + self.bias
+
+        hz = hz + self.dt * (torch.tanh(i2h) -
+                             torch.matmul(torch.tanh(h2h), -self.h2hinv) -
+                             self.gamma * hy - self.epsilon * hz)
+        hy = hy + self.dt * hz
+        return hy, hz
+
+    def forward(self, x):
+        hy = torch.zeros(x.size(0), self.n_hid).to(self.device)
+        hz = torch.zeros(x.size(0), self.n_hid).to(self.device)
+        all_states = []
+        for t in range(x.size(1)):
+            hy, hz = self.cell(x[:, t], hy, hz)
+            all_states.append(hy)
+
+        return torch.stack(all_states, dim=1), [hy]
+

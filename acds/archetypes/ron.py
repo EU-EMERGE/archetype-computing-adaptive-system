@@ -64,6 +64,8 @@ class RandomizedOscillatorsNetwork(nn.Module):
                 is randomly sampled from a uniform distribution between the two values.
             rho (float): Spectral radius of the hidden-to-hidden weight matrix.
             input_scaling (float): Scaling factor for the input-to-hidden weight matrix.
+                Wrt original paper here we initialize input-hidden in (0, 1) instead of (-2, 2).
+                Therefore, when taking input_scaling from original paper, we recommend to multiply it by 2.
             topology (str): Topology of the hidden-to-hidden weight matrix. Options are
                 'full', 'lower', 'orthogonal', 'band', 'ring', 'toeplitz'. Default is
                 'full'.

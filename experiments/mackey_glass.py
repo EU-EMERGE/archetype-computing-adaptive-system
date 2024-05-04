@@ -10,6 +10,7 @@ from acds.archetypes import (
     DeepReservoir,
     RandomizedOscillatorsNetwork,
     PhysicallyImplementableRandomizedOscillatorsNetwork,
+    MultistablePhysicallyImplementableRandomizedOscillatorsNetwork,
 )
 from acds.benchmarks import get_mackey_glass
 
@@ -50,6 +51,7 @@ parser.add_argument("--cpu", action="store_true")
 parser.add_argument("--esn", action="store_true")
 parser.add_argument("--ron", action="store_true")
 parser.add_argument("--pron", action="store_true")
+parser.add_argument("--mspron", action="store_true")
 parser.add_argument("--inp_scaling", type=float, default=1.0, help="ESN input scaling")
 parser.add_argument("--rho", type=float, default=0.99, help="ESN spectral radius")
 parser.add_argument("--leaky", type=float, default=1.0, help="ESN spectral radius")
@@ -157,6 +159,16 @@ for i in range(args.trials):
             args.inp_scaling,
             device=device
         ).to(device)
+    elif args.mspron:
+        model = MultistablePhysicallyImplementableRandomizedOscillatorsNetwork(
+            n_inp,
+            args.n_hid,
+            args.dt,
+            gamma,
+            epsilon,
+            args.inp_scaling,
+            device=device
+        ).to(device)
     else:
         raise ValueError("Wrong model name")
 
@@ -191,6 +203,8 @@ if args.ron:
     f = open(os.path.join(args.resultroot, f"MG_log_RON_{args.topology}.txt"), "a")
 elif args.pron:
     f = open(os.path.join(args.resultroot, "MG_log_PRON.txt"), "a")
+elif args.mspron:
+    f = open(os.path.join(args.resultroot, "MG_log_MSPRON.txt"), "a")
 elif args.esn:
     f = open(os.path.join(args.resultroot, "MG_log_ESN.txt"), "a")
 else:

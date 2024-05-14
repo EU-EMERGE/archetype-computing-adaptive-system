@@ -49,38 +49,20 @@ parser.add_argument(
     help="z controle parameter <epsilon> of the coRNN",
 )
 parser.add_argument("--cpu", action="store_true")
-parser.add_argument("--esn", action="store_true")
-parser.add_argument("--ron", action="store_true")
 parser.add_argument('--pron', action="store_true")
-parser.add_argument('--mspron', action="store_true")
 
 parser.add_argument("--matrix_friction", action="store_true")
 parser.add_argument("--input_fn", type=str, default="linear", choices=["linear", "mlp"],
                     help="input preprocessing modality")
 
 parser.add_argument("--inp_scaling", type=float, default=1.0, help="ESN input scaling")
-parser.add_argument("--rho", type=float, default=0.99, help="ESN spectral radius")
-parser.add_argument("--leaky", type=float, default=1.0, help="ESN spectral radius")
 parser.add_argument("--use_test", action="store_true")
 parser.add_argument(
     "--trials", type=int, default=1, help="How many times to run the experiment"
 )
-parser.add_argument(
-    "--topology",
-    type=str,
-    default="full",
-    choices=["full", "ring", "band", "lower", "toeplitz", "orthogonal"],
-    help="Topology of the reservoir",
-)
-parser.add_argument(
-    "--sparsity", type=float, default=0.0, help="Sparsity of the reservoir"
-)
-parser.add_argument(
-    "--reservoir_scaler",
-    type=float,
-    default=1.0,
-    help="Scaler in case of ring/band/toeplitz reservoir",
-)
+
+parser.add_argument('--epochs', type=int, default=10, help="Number of epochs")
+parser.add_argument('--lr', type=float, default=1e-3, help="Learning rate")
 
 args = parser.parse_args()
 
@@ -92,8 +74,6 @@ assert os.path.exists(args.resultroot), \
     f"{args.resultroot} folder does not exist, please create it and run the script again."
 
 
-assert 1.0 > args.sparsity >= 0.0, "Sparsity in [0, 1)"
-
 device = (
     torch.device("cuda")
     if torch.cuda.is_available() and not args.cpu
@@ -102,17 +82,17 @@ device = (
 
 
 @torch.no_grad()
-def test(data_loader, classifier, scaler):
+def test(data_loader, readout):
     activations, ys = [], []
     for x, y in tqdm(data_loader):
         x = x.to(device)
+        y = y.to(device).long()
         output = model(x)[-1][0]
-        activations.append(output.cpu())
+        activations.append(output)
         ys.append(y)
-    activations = torch.cat(activations, dim=0).numpy()
-    activations = scaler.transform(activations)
-    ys = torch.cat(ys, dim=0).numpy()
-    return classifier.score(activations, ys)
+    activations = torch.cat(activations, dim=0)
+    ys = torch.cat(ys, dim=0).squeeze(-1)
+    return (torch.argmax(readout(activations), dim=-1) == ys).float().mean().item()
 
 
 n_inp = 1
@@ -137,31 +117,7 @@ else:
 train_accs, valid_accs, test_accs = [], [], []
 
 for i in range(args.trials):
-    if args.esn:
-        model = DeepReservoir(
-            n_inp,
-            tot_units=args.n_hid,
-            spectral_radius=args.rho,
-            input_scaling=args.inp_scaling,
-            connectivity_recurrent=int((1 - args.sparsity) * args.n_hid),
-            connectivity_input=args.n_hid,
-            leaky=args.leaky,
-        ).to(device)
-    elif args.ron:
-        model = RandomizedOscillatorsNetwork(
-            n_inp,
-            args.n_hid,
-            args.dt,
-            gamma,
-            epsilon,
-            args.rho,
-            args.inp_scaling,
-            topology=args.topology,
-            sparsity=args.sparsity,
-            reservoir_scaler=args.reservoir_scaler,
-            device=device,
-        ).to(device)
-    elif args.pron:
+    if args.pron:
         model = PhysicallyImplementableRandomizedOscillatorsNetwork(
             n_inp,
             args.n_hid,
@@ -173,45 +129,38 @@ for i in range(args.trials):
             input_function=args.input_fn,
             matrix_friction=args.matrix_friction,
         ).to(device)
-    elif args.mspron:
-        model = MultistablePhysicallyImplementableRandomizedOscillatorsNetwork(
-            n_inp,
-            args.n_hid,
-            args.dt,
-            gamma,
-            epsilon,
-            args.inp_scaling,
-            device=device
-        ).to(device)
+        readout = torch.nn.Linear(args.n_hid, n_out).to(device)
     else:
         raise ValueError("Wrong model choice.")
 
-    activations, ys = [], []
-    for x, y in tqdm(train_loader):
-        x = x.to(device)
-        output = model(x)[-1][0]
-        activations.append(output.cpu())
-        ys.append(y)
-    activations = torch.cat(activations, dim=0).numpy()
-    ys = torch.cat(ys, dim=0).squeeze().numpy()
-    scaler = preprocessing.StandardScaler().fit(activations)
-    activations = scaler.transform(activations)
-    classifier = LogisticRegression(max_iter=1000).fit(activations, ys)
-    train_acc = test(train_loader, classifier, scaler)
-    valid_acc = test(valid_loader, classifier, scaler) if not args.use_test else 0.0
-    test_acc = test(test_loader, classifier, scaler) if args.use_test else 0.0
+    optimizer_res = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer_readout = torch.optim.Adam(readout.parameters(), lr=args.lr)
+    criterion = torch.nn.CrossEntropyLoss()
+
+    for epoch in range(args.epochs):
+        for x, y in tqdm(train_loader):
+            optimizer_res.zero_grad()
+            optimizer_readout.zero_grad()
+            x = x.to(device)
+            y = y.to(device).long()
+            output = model(x)[-1][0]
+            output = readout(output)
+            loss = criterion(output, y.squeeze(-1))
+            loss.backward()
+            optimizer_res.step()
+            optimizer_readout.step()
+        acc = test(valid_loader, readout) if not args.use_test else test(test_loader, readout)
+        print(f"Epoch {epoch}, accuracy: {acc}")
+
+    train_acc = test(train_loader, readout)
+    valid_acc = test(valid_loader, readout) if not args.use_test else 0.0
+    test_acc = test(test_loader, readout) if args.use_test else 0.0
     train_accs.append(train_acc)
     valid_accs.append(valid_acc)
     test_accs.append(test_acc)
 
-if args.ron:
-    f = open(os.path.join(args.resultroot, f"Adiac_log_RON_{args.topology}{args.resultsuffix}.txt"), "a")
-elif args.pron:
-    f = open(os.path.join(args.resultroot, f"Adiac_log_PRON{args.resultsuffix}.txt"), "a")
-elif args.mspron:
-    f = open(os.path.join(args.resultroot, f"Adiac_log_MSPRON{args.resultsuffix}.txt"), "a")
-elif args.esn:
-    f = open(os.path.join(args.resultroot, f"Adiac_log_ESN{args.resultsuffix}.txt"), "a")
+if args.pron:
+    f = open(os.path.join(args.resultroot, f"Adiac_log_PRON_trained{args.resultsuffix}.txt"), "a")
 else:
     raise ValueError("Wrong model choice.")
 

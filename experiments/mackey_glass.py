@@ -19,6 +19,7 @@ parser = argparse.ArgumentParser(description="training parameters")
 parser.add_argument("--dataroot", type=str,
                     help="Path to the folder containing the mackey_glass.csv dataset")
 parser.add_argument("--resultroot", type=str)
+parser.add_argument("--resultsuffix", type=str, default="", help="suffix to append to the result file name")
 parser.add_argument(
     "--n_hid", type=int, default=100, help="hidden size of recurrent net"
 )
@@ -200,13 +201,13 @@ for i in range(args.trials):
     test_mse.append(test_nmse)
 
 if args.ron:
-    f = open(os.path.join(args.resultroot, f"MG_log_RON_{args.topology}.txt"), "a")
+    f = open(os.path.join(args.resultroot, f"MG_log_RON_{args.topology}{args.resultsuffix}.txt"), "a")
 elif args.pron:
-    f = open(os.path.join(args.resultroot, "MG_log_PRON.txt"), "a")
+    f = open(os.path.join(args.resultroot, f"MG_log_PRON{args.resultsuffix}.txt"), "a")
 elif args.mspron:
-    f = open(os.path.join(args.resultroot, "MG_log_MSPRON.txt"), "a")
+    f = open(os.path.join(args.resultroot, f"MG_log_MSPRON{args.resultsuffix}.txt"), "a")
 elif args.esn:
-    f = open(os.path.join(args.resultroot, "MG_log_ESN.txt"), "a")
+    f = open(os.path.join(args.resultroot, f"MG_log_ESN{args.resultsuffix}.txt"), "a")
 else:
     raise ValueError("Wrong model choice.")
 

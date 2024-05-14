@@ -18,6 +18,7 @@ from acds.benchmarks import get_mnist_data
 parser = argparse.ArgumentParser(description="training parameters")
 parser.add_argument("--dataroot", type=str)
 parser.add_argument("--resultroot", type=str)
+parser.add_argument("--resultsuffix", type=str, default="", help="suffix to append to the result file name")
 parser.add_argument(
     "--n_hid", type=int, default=256, help="hidden size of recurrent net"
 )
@@ -180,7 +181,7 @@ for i in range(args.trials):
         activations.append(output.cpu())
         ys.append(labels)
     activations = torch.cat(activations, dim=0).numpy()
-    ys = torch.cat(ys, dim=0).numpy()
+    ys = torch.cat(ys, dim=0).squeeze().numpy()
     scaler = preprocessing.StandardScaler().fit(activations)
     activations = scaler.transform(activations)
     classifier = LogisticRegression(max_iter=1000).fit(activations, ys)
@@ -192,13 +193,13 @@ for i in range(args.trials):
     test_accs.append(test_acc)
 
 if args.ron:
-    f = open(os.path.join(args.resultroot, f"sMNIST_log_RON_{args.topology}.txt"), "a")
+    f = open(os.path.join(args.resultroot, f"sMNIST_log_RON_{args.topology}{args.resultsuffix}.txt"), "a")
 elif args.pron:
-    f = open(os.path.join(args.resultroot, "sMNIST_log_PRON.txt"), "a")
+    f = open(os.path.join(args.resultroot, f"sMNIST_log_PRON{args.resultsuffix}.txt"), "a")
 elif args.mspron:
-    f = open(os.path.join(args.resultroot, "sMNIST_log_MSPRON.txt"), "a")
+    f = open(os.path.join(args.resultroot, f"sMNIST_log_MSPRON{args.resultsuffix}.txt"), "a")
 elif args.esn:
-    f = open(os.path.join(args.resultroot, "sMNIST_log_ESN.txt"), "a")
+    f = open(os.path.join(args.resultroot, f"sMNIST_log_ESN{args.resultsuffix}.txt"), "a")
 else:
     raise ValueError("Wrong model choice.")
 

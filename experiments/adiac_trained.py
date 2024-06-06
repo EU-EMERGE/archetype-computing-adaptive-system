@@ -4,15 +4,12 @@ from typing import List
 import os
 import numpy as np
 import torch.nn.utils
-from sklearn import preprocessing
-from sklearn.linear_model import LogisticRegression
 from tqdm import tqdm
 
 from acds.archetypes import (
-    DeepReservoir,
-    RandomizedOscillatorsNetwork,
     PhysicallyImplementableRandomizedOscillatorsNetwork,
-    MultistablePhysicallyImplementableRandomizedOscillatorsNetwork,
+    TrainedPhysicallyImplementableRandomizedOscillatorsNetwork,
+    hcoRNN
 )
 from acds.benchmarks import get_adiac_data
 
@@ -23,33 +20,32 @@ parser.add_argument("--resultsuffix", type=str, default="", help="suffix to appe
 parser.add_argument(
     "--n_hid", type=int, default=256, help="hidden size of recurrent net"
 )
+parser.add_argument('--modelname', type=str, default="pron", choices=["pron", "trainedpron", "hcornn"],
+                    help="Model name to use")
+parser.add_argument("--train_oscillators", action="store_true")
 parser.add_argument("--batch", type=int, default=30, help="batch size")
 parser.add_argument(
-    "--dt", type=float, default=0.042, help="step size <dt> of the coRNN"
+    "--dt", type=float, default=0.01, help="step size <dt> of the coRNN"
 )
 parser.add_argument(
-    "--gamma", type=float, default=2.7, help="y control parameter <gamma> of the coRNN"
+    "--gamma", type=float, default=3
 )
 parser.add_argument(
     "--epsilon",
     type=float,
-    default=4.7,
-    help="z controle parameter <epsilon> of the coRNN",
+    default=5,
 )
 parser.add_argument(
     "--gamma_range",
     type=float,
-    default=2.7,
-    help="y controle parameter <gamma> of the coRNN",
+    default=2,
 )
 parser.add_argument(
     "--epsilon_range",
     type=float,
-    default=4.7,
-    help="z controle parameter <epsilon> of the coRNN",
+    default=1,
 )
 parser.add_argument("--cpu", action="store_true")
-parser.add_argument('--pron', action="store_true")
 
 parser.add_argument("--matrix_friction", action="store_true")
 parser.add_argument("--input_fn", type=str, default="linear", choices=["linear", "mlp"],
@@ -117,7 +113,7 @@ else:
 train_accs, valid_accs, test_accs = [], [], []
 
 for i in range(args.trials):
-    if args.pron:
+    if args.modelname == 'pron':
         model = PhysicallyImplementableRandomizedOscillatorsNetwork(
             n_inp,
             args.n_hid,
@@ -129,10 +125,32 @@ for i in range(args.trials):
             input_function=args.input_fn,
             matrix_friction=args.matrix_friction,
         ).to(device)
-        readout = torch.nn.Linear(args.n_hid, n_out).to(device)
+    elif args.modelname == 'trainedpron':
+        model = TrainedPhysicallyImplementableRandomizedOscillatorsNetwork(
+            n_inp,
+            args.n_hid,
+            args.dt,
+            gamma,
+            epsilon,
+            device=device,
+            matrix_friction=args.matrix_friction,
+            train_oscillators=args.train_oscillators
+        ).to(device)
+    elif args.modelname == 'hcornn':
+        model = hcoRNN(
+            n_inp,
+            args.n_hid,
+            args.dt,
+            gamma,
+            epsilon,
+            device=device,
+            matrix_friction=args.matrix_friction,
+            train_oscillators=args.train_oscillators
+        ).to(device)
     else:
         raise ValueError("Wrong model choice.")
 
+    readout = torch.nn.Linear(args.n_hid, n_out).to(device)
     optimizer_res = torch.optim.Adam(model.parameters(), lr=args.lr)
     optimizer_readout = torch.optim.Adam(readout.parameters(), lr=args.lr)
     criterion = torch.nn.CrossEntropyLoss()
@@ -149,8 +167,9 @@ for i in range(args.trials):
             loss.backward()
             optimizer_res.step()
             optimizer_readout.step()
+        train_acc = test(train_loader, readout)
         acc = test(valid_loader, readout) if not args.use_test else test(test_loader, readout)
-        print(f"Epoch {epoch}, accuracy: {acc}")
+        print(f"Epoch {epoch}, train accuracy {train_acc}, valid/test accuracy: {acc}")
 
     train_acc = test(train_loader, readout)
     valid_acc = test(valid_loader, readout) if not args.use_test else 0.0
@@ -159,10 +178,7 @@ for i in range(args.trials):
     valid_accs.append(valid_acc)
     test_accs.append(test_acc)
 
-if args.pron:
-    f = open(os.path.join(args.resultroot, f"Adiac_log_PRON_trained{args.resultsuffix}.txt"), "a")
-else:
-    raise ValueError("Wrong model choice.")
+f = open(os.path.join(args.resultroot, f"TrainedAdiac_log_{args.modelname}{args.resultsuffix}.txt"), "a")
 
 ar = ""
 for k, v in vars(args).items():

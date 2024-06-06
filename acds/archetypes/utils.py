@@ -4,6 +4,22 @@ import numpy as np
 import torch
 
 
+def count_parameters(model):
+    """Return total number of parameters and
+    trainable parameters of a PyTorch model.
+    """
+    params = []
+    trainable_params = []
+    for p in model.parameters():
+        params.append(p.numel())
+        if p.requires_grad:
+            trainable_params.append(p.numel())
+    pytorch_total_params = sum(params)
+    pytorch_total_trainableparams = sum(trainable_params)
+    print('Total params:', pytorch_total_params)
+    print('Total trainable params:', pytorch_total_trainableparams)
+
+
 def sparse_eye_init(M: int) -> torch.FloatTensor:
     """Generates an M x M matrix to be used as sparse identity matrix for the re-scaling
     of the sparse recurrent kernel in presence of non-zero leakage. The neurons are

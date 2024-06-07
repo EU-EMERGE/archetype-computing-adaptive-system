@@ -2,6 +2,7 @@ from typing import Literal
 
 import numpy as np
 import torch
+from torch import nn
 
 
 def count_parameters(model):
@@ -16,8 +17,7 @@ def count_parameters(model):
             trainable_params.append(p.numel())
     pytorch_total_params = sum(params)
     pytorch_total_trainableparams = sum(trainable_params)
-    print('Total params:', pytorch_total_params)
-    print('Total trainable params:', pytorch_total_trainableparams)
+    return pytorch_total_params, pytorch_total_trainableparams
 
 
 def sparse_eye_init(M: int) -> torch.FloatTensor:

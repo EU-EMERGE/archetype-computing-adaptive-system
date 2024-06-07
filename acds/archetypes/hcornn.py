@@ -28,7 +28,7 @@ class hcoRNN(nn.Module):
             if matrix_friction:
                 self.gamma = torch.empty(n_hid, n_hid, device=device).normal_(
                     0, 0.9 / sqrt(n_hid))
-                self.gamma = torch.abs(self.gamma)
+                # self.gamma = torch.abs(self.gamma)
             else:
                 self.gamma = torch.rand(n_hid, device=device)
                 self.gamma = self.gamma * (gamma_max - gamma_min) + gamma_min
@@ -42,7 +42,7 @@ class hcoRNN(nn.Module):
             eps_min, eps_max = epsilon
             if matrix_friction:
                 self.epsilon = torch.empty(n_hid, n_hid, device=device).normal_(0, 0.9 / sqrt(n_hid))
-                self.epsilon = torch.abs(self.epsilon)
+                # self.epsilon = torch.abs(self.epsilon)
             else:
                 self.epsilon = torch.rand(n_hid, device=device)
                 self.epsilon = self.epsilon * (eps_max - eps_min) + eps_min

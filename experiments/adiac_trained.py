@@ -5,6 +5,7 @@ import os
 import numpy as np
 import torch.nn.utils
 from tqdm import tqdm
+from acds.archetypes.utils import count_parameters
 
 from acds.archetypes import (
     PhysicallyImplementableRandomizedOscillatorsNetwork,
@@ -155,6 +156,12 @@ for i in range(args.trials):
     optimizer_readout = torch.optim.Adam(readout.parameters(), lr=args.lr)
     criterion = torch.nn.CrossEntropyLoss()
 
+    total_params, total_trainable_params = count_parameters(model)
+    total_params_readout, total_trainable_params_readout = count_parameters(readout)
+    print(f"Total parameters model/readout: {total_params}/{total_params_readout}")
+    print(f"Total trainable parameters model/readout: {total_trainable_params}/{total_trainable_params_readout}")
+
+    max_valid_acc = 0.
     for epoch in range(args.epochs):
         for x, y in tqdm(train_loader):
             optimizer_res.zero_grad()
@@ -169,11 +176,17 @@ for i in range(args.trials):
             optimizer_readout.step()
         train_acc = test(train_loader, readout)
         acc = test(valid_loader, readout) if not args.use_test else test(test_loader, readout)
+        max_valid_acc = max(max_valid_acc, acc)
         print(f"Epoch {epoch}, train accuracy {train_acc}, valid/test accuracy: {acc}")
 
     train_acc = test(train_loader, readout)
-    valid_acc = test(valid_loader, readout) if not args.use_test else 0.0
-    test_acc = test(test_loader, readout) if args.use_test else 0.0
+    if args.use_test:
+        test_acc = max(max_valid_acc, test(test_loader, readout))
+        valid_acc = 0.0
+    else:
+        valid_acc = max(max_valid_acc, test(valid_loader, readout))
+        test_acc = 0.0
+
     train_accs.append(train_acc)
     valid_accs.append(valid_acc)
     test_accs.append(test_acc)

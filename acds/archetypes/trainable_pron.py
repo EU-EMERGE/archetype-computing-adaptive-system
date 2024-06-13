@@ -6,7 +6,8 @@ from numpy import sqrt
 
 class TrainedPhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
     def __init__(self, n_inp, n_hid, dt, gamma, epsilon, device='cpu',
-                 matrix_friction=False, train_oscillators=False):
+                 matrix_friction=False, train_oscillators=False,
+                 train_recurrent=True):
         super().__init__()
 
         self.n_hid = n_hid
@@ -59,7 +60,7 @@ class TrainedPhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
 
         h2h = torch.empty(n_hid, n_hid, device=device)
         nn.init.orthogonal_(h2h)
-        self.h2h = nn.Parameter(h2h, requires_grad=True)
+        self.h2h = nn.Parameter(h2h, requires_grad=train_recurrent)
 
         bias = (torch.rand(n_hid) * 2 - 1)
         self.bias = nn.Parameter(bias, requires_grad=True)

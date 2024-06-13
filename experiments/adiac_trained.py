@@ -24,6 +24,7 @@ parser.add_argument(
 parser.add_argument('--modelname', type=str, default="pron", choices=["pron", "trainedpron", "hcornn"],
                     help="Model name to use")
 parser.add_argument("--train_oscillators", action="store_true")
+parser.add_argument("--train_recurrent", action="store_true")
 parser.add_argument("--batch", type=int, default=30, help="batch size")
 parser.add_argument(
     "--dt", type=float, default=0.01, help="step size <dt> of the coRNN"
@@ -135,7 +136,8 @@ for i in range(args.trials):
             epsilon,
             device=device,
             matrix_friction=args.matrix_friction,
-            train_oscillators=args.train_oscillators
+            train_oscillators=args.train_oscillators,
+            train_recurrent=args.train_recurrent
         ).to(device)
     elif args.modelname == 'hcornn':
         model = hcoRNN(

@@ -39,3 +39,42 @@ def get_mackey_glass(csvfolder: os.PathLike, lag=84, washout=200):
         (val_dataset, val_target),
         (test_dataset, test_target),
     )
+
+
+def get_mackey_glass_windows(csvfolder: os.PathLike, chunk_length, prediction_lag=84, tr_bs=10):
+    from sktime.split import SlidingWindowSplitter
+    import numpy as np
+
+    with open(os.path.join(csvfolder, "mackey_glass.csv"), "r") as f:
+        data_lines = f.readlines()[0]
+
+    # 10k steps
+    sequence = np.array([float(el) for el in data_lines.split(",")])
+
+    splitter = SlidingWindowSplitter(fh=prediction_lag, window_length=chunk_length, step_length=1)
+
+    len_train = int(sequence.shape[0] / 2)
+    len_val = int(sequence.shape[0] / 4)
+
+    splits = splitter.split(sequence)
+    windows, targets = [], []
+    for x, y in splits:
+        windows.append(x)
+        targets.append(y)
+
+    windows = torch.from_numpy(np.array(windows)).float().unsqueeze(-1)
+    targets = torch.from_numpy(np.array(targets)).float()
+
+    train_dataset, train_target = windows[:len_train], targets[:len_train]
+    train_loader = torch.utils.data.DataLoader(
+        torch.utils.data.TensorDataset(train_dataset, train_target), batch_size=tr_bs, shuffle=True, drop_last=False
+    )
+    val_dataset, val_target = windows[len_train:len_train+len_val], targets[len_train:len_train+len_val]
+    val_loader = torch.utils.data.DataLoader(
+        torch.utils.data.TensorDataset(val_dataset, val_target), batch_size=500, shuffle=False, drop_last=False
+    )
+    test_dataset, test_target = windows[len_train+len_val:], targets[len_train+len_val:]
+    test_loader = torch.utils.data.DataLoader(
+        torch.utils.data.TensorDataset(test_dataset, test_target), batch_size=500, shuffle=False, drop_last=False
+    )
+    return train_loader, val_loader, test_loader

@@ -12,7 +12,7 @@ from acds.archetypes import (
     TrainedPhysicallyImplementableRandomizedOscillatorsNetwork,
     hcoRNN
 )
-from acds.benchmarks import get_adiac_data
+from acds.benchmarks import get_mnist_data
 
 parser = argparse.ArgumentParser(description="training parameters")
 parser.add_argument("--dataroot", type=str)
@@ -85,6 +85,7 @@ def test(data_loader, readout):
     for x, y in tqdm(data_loader):
         x = x.to(device)
         y = y.to(device).long()
+        x = x.view(x.shape[0], 784, -1)
         output = model(x)[-1][0]
         activations.append(output)
         ys.append(y)
@@ -94,7 +95,7 @@ def test(data_loader, readout):
 
 
 n_inp = 1
-n_out = 37  # classes
+n_out = 10  # classes
 gamma = (args.gamma - args.gamma_range / 2.0, args.gamma + args.gamma_range / 2.0)
 epsilon = (
     args.epsilon - args.epsilon_range / 2.0,
@@ -104,13 +105,7 @@ epsilon = (
 max_test_accs: List[float] = []
 if args.trials > 1:
     assert args.use_test, "Multiple runs are only for the final test phase with the test set."
-    train_loader, valid_loader, test_loader = get_adiac_data(
-        args.dataroot, args.batch, args.batch, whole_train=True
-    )
-else:
-    train_loader, valid_loader, test_loader = get_adiac_data(
-        args.dataroot, args.batch, args.batch
-    )
+train_loader, valid_loader, test_loader = get_mnist_data(args.dataroot, args.batch, 512)
 
 train_accs, valid_accs, test_accs = [], [], []
 for i in range(args.trials):
@@ -169,6 +164,7 @@ for i in range(args.trials):
             optimizer_readout.zero_grad()
             x = x.to(device)
             y = y.to(device).long()
+            x = x.view(x.shape[0], 784, -1)
             output = model(x)[-1][0]
             output = readout(output)
             loss = criterion(output, y.squeeze(-1))
@@ -192,7 +188,7 @@ for i in range(args.trials):
     valid_accs.append(valid_acc)
     test_accs.append(test_acc)
 
-f = open(os.path.join(args.resultroot, f"TrainedAdiac_log_{args.modelname}{args.resultsuffix}.txt"), "a")
+f = open(os.path.join(args.resultroot, f"TrainedsMNIST_log_{args.modelname}{args.resultsuffix}.txt"), "a")
 
 ar = ""
 for k, v in vars(args).items():

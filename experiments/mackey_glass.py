@@ -49,6 +49,7 @@ parser.add_argument(
     help="z controle parameter <epsilon> of the coRNN",
 )
 parser.add_argument("--cpu", action="store_true")
+parser.add_argument("--nrmse", action="store_true", help="Use NRMSE instead of MSE")
 parser.add_argument("--esn", action="store_true")
 parser.add_argument("--ron", action="store_true")
 parser.add_argument("--pron", action="store_true")
@@ -111,10 +112,11 @@ def test(dataset, target, classifier, scaler):
     activations = scaler.transform(activations)
     predictions = classifier.predict(activations)
     mse = np.mean(np.square(predictions - target))
-    rmse = np.sqrt(mse)
-    norm = np.sqrt(np.square(target).mean())
-    nrmse = rmse / (norm + 1e-9)
-    return nrmse
+    if args.nrmse:
+        mse = np.sqrt(mse)
+        norm = np.sqrt(np.square(target).mean())
+        mse = mse / (norm + 1e-9)
+    return mse
 
 
 gamma = (args.gamma - args.gamma_range / 2.0, args.gamma + args.gamma_range / 2.0)

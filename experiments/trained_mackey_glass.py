@@ -12,7 +12,7 @@ from acds.archetypes import (
     TrainedPhysicallyImplementableRandomizedOscillatorsNetwork,
     hcoRNN
 )
-from acds.benchmarks import get_adiac_data
+from acds.benchmarks import get_mackey_glass_windows
 
 parser = argparse.ArgumentParser(description="training parameters")
 parser.add_argument("--dataroot", type=str)
@@ -84,35 +84,30 @@ def test(data_loader, readout):
     activations, ys = [], []
     for x, y in tqdm(data_loader):
         x = x.to(device)
-        y = y.to(device).long()
+        y = y.to(device)
         output = model(x)[-1][0]
         activations.append(output)
         ys.append(y)
     activations = torch.cat(activations, dim=0)
-    ys = torch.cat(ys, dim=0).squeeze(-1)
-    return (torch.argmax(readout(activations), dim=-1) == ys).float().mean().item()
+    ys = torch.cat(ys, dim=0)
+    return torch.nn.functional.mse_loss(readout(activations), ys).item()
 
 
 n_inp = 1
-n_out = 37  # classes
+n_out = 1
 gamma = (args.gamma - args.gamma_range / 2.0, args.gamma + args.gamma_range / 2.0)
 epsilon = (
     args.epsilon - args.epsilon_range / 2.0,
     args.epsilon + args.epsilon_range / 2.0,
 )
 
-max_test_accs: List[float] = []
+min_test_loss: List[float] = []
 if args.trials > 1:
     assert args.use_test, "Multiple runs are only for the final test phase with the test set."
-    train_loader, valid_loader, test_loader = get_adiac_data(
-        args.dataroot, args.batch, args.batch, whole_train=True
-    )
-else:
-    train_loader, valid_loader, test_loader = get_adiac_data(
-        args.dataroot, args.batch, args.batch
-    )
+train_loader, valid_loader, test_loader = get_mackey_glass_windows(args.dataroot, chunk_length=100, prediction_lag=84,
+                                                                   tr_bs=args.batch)
 
-train_accs, valid_accs, test_accs = [], [], []
+train_losses, valid_losses, test_losses = [], [], []
 for i in range(args.trials):
     if args.modelname == 'pron':
         model = PhysicallyImplementableRandomizedOscillatorsNetwork(
@@ -155,55 +150,55 @@ for i in range(args.trials):
     readout = torch.nn.Linear(args.n_hid, n_out).to(device)
     optimizer_res = torch.optim.Adam(model.parameters(), lr=args.lr)
     optimizer_readout = torch.optim.Adam(readout.parameters(), lr=args.lr)
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.MSELoss()
 
     total_params, total_trainable_params = count_parameters(model)
     total_params_readout, total_trainable_params_readout = count_parameters(readout)
     print(f"Total parameters model/readout: {total_params}/{total_params_readout}")
     print(f"Total trainable parameters model/readout: {total_trainable_params}/{total_trainable_params_readout}")
 
-    max_valid_acc = 0.
+    min_valid_loss = 100000.
     for epoch in range(args.epochs):
         for x, y in tqdm(train_loader):
             optimizer_res.zero_grad()
             optimizer_readout.zero_grad()
             x = x.to(device)
-            y = y.to(device).long()
+            y = y.to(device)
             output = model(x)[-1][0]
             output = readout(output)
             loss = criterion(output, y.squeeze(-1))
             loss.backward()
             optimizer_res.step()
             optimizer_readout.step()
-        train_acc = test(train_loader, readout)
-        acc = test(valid_loader, readout) if not args.use_test else test(test_loader, readout)
-        max_valid_acc = max(max_valid_acc, acc)
-        print(f"Epoch {epoch}, train accuracy {train_acc}, valid/test accuracy: {acc}")
+        train_loss = test(train_loader, readout)
+        val_loss = test(valid_loader, readout) if not args.use_test else test(test_loader, readout)
+        min_valid_loss = min(min_valid_loss, val_loss)
+        print(f"Epoch {epoch}, train loss {train_loss}, valid/test loss: {val_loss}")
 
-    train_acc = test(train_loader, readout)
+    train_loss = test(train_loader, readout)
     if args.use_test:
-        test_acc = max(max_valid_acc, test(test_loader, readout))
-        valid_acc = 0.0
+        test_loss = min(min_valid_loss, test(test_loader, readout))
+        valid_loss = 10000.
     else:
-        valid_acc = max(max_valid_acc, test(valid_loader, readout))
-        test_acc = 0.0
+        valid_acc = min(min_valid_loss, test(valid_loader, readout))
+        test_acc = 10000.
 
-    train_accs.append(train_acc)
-    valid_accs.append(valid_acc)
-    test_accs.append(test_acc)
+    train_losses.append(train_loss)
+    valid_losses.append(valid_loss)
+    test_losses.append(test_loss)
 
-f = open(os.path.join(args.resultroot, f"TrainedAdiac_log_{args.modelname}{args.resultsuffix}.txt"), "a")
+f = open(os.path.join(args.resultroot, f"TrainedMG_log_{args.modelname}{args.resultsuffix}.txt"), "a")
 
 ar = ""
 for k, v in vars(args).items():
     ar += f"{str(k)}: {str(v)}, "
 ar += (
-    f"train: {[str(round(train_acc, 2)) for train_acc in train_accs]} "
-    f"valid: {[str(round(valid_acc, 2)) for valid_acc in valid_accs]} "
-    f"test: {[str(round(test_acc, 2)) for test_acc in test_accs]}"
-    f"mean/std train: {np.mean(train_accs), np.std(train_accs)} "
-    f"mean/std valid: {np.mean(valid_accs), np.std(valid_accs)} "
-    f"mean/std test: {np.mean(test_accs), np.std(test_accs)}"
+    f"train: {[str(round(train_loss, 2)) for train_loss in train_losses]} "
+    f"valid: {[str(round(valid_loss, 2)) for valid_loss in valid_losses]} "
+    f"test: {[str(round(test_loss, 2)) for test_loss in test_losses]}"
+    f"mean/std train: {np.mean(train_losses), np.std(train_losses)} "
+    f"mean/std valid: {np.mean(valid_losses), np.std(valid_losses)} "
+    f"mean/std test: {np.mean(test_losses), np.std(test_losses)}"
 )
 f.write(ar + "\n")
 f.close()

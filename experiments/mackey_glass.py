@@ -24,6 +24,7 @@ parser.add_argument(
     "--n_hid", type=int, default=100, help="hidden size of recurrent net"
 )
 parser.add_argument("--batch", type=int, default=30, help="batch size")
+parser.add_argument("--lag", type=int, default=1, help="prediction lag")
 parser.add_argument(
     "--dt", type=float, default=0.042, help="step size <dt> of the coRNN"
 )
@@ -49,7 +50,6 @@ parser.add_argument(
     help="z controle parameter <epsilon> of the coRNN",
 )
 parser.add_argument("--cpu", action="store_true")
-parser.add_argument("--nrmse", action="store_true", help="Use NRMSE instead of MSE")
 parser.add_argument("--esn", action="store_true")
 parser.add_argument("--ron", action="store_true")
 parser.add_argument("--pron", action="store_true")
@@ -102,6 +102,8 @@ n_out = 1
 washout = 200
 
 
+criterion_eval = torch.nn.L1Loss()
+
 @torch.no_grad()
 def test(dataset, target, classifier, scaler):
     dataset = dataset.reshape(1, -1, 1).to(device)
@@ -111,12 +113,8 @@ def test(dataset, target, classifier, scaler):
     activations = activations.reshape(-1, args.n_hid)
     activations = scaler.transform(activations)
     predictions = classifier.predict(activations)
-    mse = np.mean(np.square(predictions - target))
-    if args.nrmse:
-        mse = np.sqrt(mse)
-        norm = np.sqrt(np.square(target).mean())
-        mse = mse / (norm + 1e-9)
-    return mse
+    error = criterion_eval(torch.from_numpy(predictions).float(), torch.from_numpy(target).float()).item()
+    return error
 
 
 gamma = (args.gamma - args.gamma_range / 2.0, args.gamma + args.gamma_range / 2.0)
@@ -179,7 +177,7 @@ for i in range(args.trials):
         (train_dataset, train_target),
         (valid_dataset, valid_target),
         (test_dataset, test_target),
-    ) = get_mackey_glass(args.dataroot)
+    ) = get_mackey_glass(args.dataroot, lag=args.lag)
 
     dataset = train_dataset.reshape(1, -1, 1).to(device)
     target = train_target.reshape(-1, 1).numpy()

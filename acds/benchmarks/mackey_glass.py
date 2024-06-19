@@ -56,14 +56,14 @@ def get_mackey_glass_windows(csvfolder: os.PathLike, chunk_length, prediction_la
     len_train = int(sequence.shape[0] / 2)
     len_val = int(sequence.shape[0] / 4)
 
-    splits = splitter.split(sequence)
+    splits = splitter.split_series(sequence)
     windows, targets = [], []
     for x, y in splits:
         windows.append(x)
         targets.append(y)
 
-    windows = torch.from_numpy(np.array(windows)).float().unsqueeze(-1)
-    targets = torch.from_numpy(np.array(targets)).float()
+    windows = torch.from_numpy(np.array(windows)).float()
+    targets = torch.from_numpy(np.array(targets)).float().squeeze(-1)
 
     train_dataset, train_target = windows[:len_train], targets[:len_train]
     train_loader = torch.utils.data.DataLoader(

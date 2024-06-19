@@ -26,6 +26,7 @@ parser.add_argument('--modelname', type=str, default="pron", choices=["pron", "t
 parser.add_argument("--train_oscillators", action="store_true")
 parser.add_argument("--train_recurrent", action="store_true")
 parser.add_argument("--batch", type=int, default=30, help="batch size")
+parser.add_argument("--lag", type=int, default=1, help="prediction lag")
 parser.add_argument(
     "--dt", type=float, default=0.01, help="step size <dt> of the coRNN"
 )
@@ -79,6 +80,10 @@ device = (
 )
 
 
+criterion_eval = torch.nn.L1Loss(reduction='mean')
+criterion_train = torch.nn.MSELoss()
+
+
 @torch.no_grad()
 def test(data_loader, readout):
     activations, ys = [], []
@@ -90,7 +95,9 @@ def test(data_loader, readout):
         ys.append(y)
     activations = torch.cat(activations, dim=0)
     ys = torch.cat(ys, dim=0)
-    return torch.nn.functional.mse_loss(readout(activations), ys).item()
+    out = readout(activations)
+    error = criterion_eval(out, ys).item()
+    return error
 
 
 n_inp = 1
@@ -104,7 +111,8 @@ epsilon = (
 min_test_loss: List[float] = []
 if args.trials > 1:
     assert args.use_test, "Multiple runs are only for the final test phase with the test set."
-train_loader, valid_loader, test_loader = get_mackey_glass_windows(args.dataroot, chunk_length=100, prediction_lag=84,
+train_loader, valid_loader, test_loader = get_mackey_glass_windows(args.dataroot, chunk_length=50,
+                                                                   prediction_lag=args.lag,
                                                                    tr_bs=args.batch)
 
 train_losses, valid_losses, test_losses = [], [], []
@@ -166,7 +174,7 @@ for i in range(args.trials):
             y = y.to(device)
             output = model(x)[-1][0]
             output = readout(output)
-            loss = criterion(output, y.squeeze(-1))
+            loss = criterion_train(output, y)
             loss.backward()
             optimizer_res.step()
             optimizer_readout.step()
@@ -180,8 +188,8 @@ for i in range(args.trials):
         test_loss = min(min_valid_loss, test(test_loader, readout))
         valid_loss = 10000.
     else:
-        valid_acc = min(min_valid_loss, test(valid_loader, readout))
-        test_acc = 10000.
+        valid_loss = min(min_valid_loss, test(valid_loader, readout))
+        test_loss = 10000.
 
     train_losses.append(train_loss)
     valid_losses.append(valid_loss)

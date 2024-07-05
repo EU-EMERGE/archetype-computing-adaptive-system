@@ -21,7 +21,7 @@ parser.add_argument("--resultsuffix", type=str, default="", help="suffix to appe
 parser.add_argument(
     "--n_hid", type=int, default=256, help="hidden size of recurrent net"
 )
-parser.add_argument('--modelname', type=str, default="pron", choices=["pron", "trainedpron", "hcornn"],
+parser.add_argument('--modelname', type=str, default="hcornn", choices=["trainedpron", "hcornn"],
                     help="Model name to use")
 parser.add_argument("--train_oscillators", action="store_true")
 parser.add_argument("--train_recurrent", action="store_true")
@@ -117,19 +117,7 @@ train_loader, valid_loader, test_loader = get_mackey_glass_windows(args.dataroot
 
 train_losses, valid_losses, test_losses = [], [], []
 for i in range(args.trials):
-    if args.modelname == 'pron':
-        model = PhysicallyImplementableRandomizedOscillatorsNetwork(
-            n_inp,
-            args.n_hid,
-            args.dt,
-            gamma,
-            epsilon,
-            args.inp_scaling,
-            device=device,
-            input_function=args.input_fn,
-            matrix_friction=args.matrix_friction,
-        ).to(device)
-    elif args.modelname == 'trainedpron':
+    if args.modelname == 'trainedpron':
         model = TrainedPhysicallyImplementableRandomizedOscillatorsNetwork(
             n_inp,
             args.n_hid,

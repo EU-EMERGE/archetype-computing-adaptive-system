@@ -21,7 +21,7 @@ def get_input_fn(fn_type, n_inp, n_hid, input_scaling, device):
 
 class PhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
     """
-    Batch-first (B, L, I)
+    Batch-first (BW1, L, I)
     """
     def __init__(self, n_inp, n_hid, dt, gamma, epsilon, input_scaling, device='cpu',
                  input_function='linear', matrix_friction=False):

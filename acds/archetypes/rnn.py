@@ -119,8 +119,8 @@ class GRU_DFA(RNN_DFA):
             rs_t.append(r)
             zs_t.append(z)
             hs_t.append(h)
-            hidden = ((1 - z) * h) + (z * hidden)
             hiddens.append(hidden)
+            hidden = ((1 - z) * h) + (z * hidden)
 
         output = torch.softmax(self.Wout(hidden), dim=-1)
 

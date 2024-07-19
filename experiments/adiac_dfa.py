@@ -31,6 +31,7 @@ parser.add_argument('--grad_clip', type=float, default=0, help="Min-Max value cl
 
 args = parser.parse_args()
 
+
 assert args.dataroot is not None, "No dataroot provided."
 if args.resultroot is None:
     warnings.warn("No resultroot provided. Using current location as default.")

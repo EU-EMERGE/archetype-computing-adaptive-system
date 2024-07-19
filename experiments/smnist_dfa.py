@@ -8,6 +8,7 @@ from acds.benchmarks import get_mnist_data
 from acds.archetypes.utils import count_parameters
 from typing import List
 from acds.archetypes import RNN_DFA, GRU_DFA
+from experiments.utils import set_seed
 
 parser = argparse.ArgumentParser(description="training parameters")
 parser.add_argument("--dataroot", type=str)
@@ -30,8 +31,12 @@ parser.add_argument('--lr', type=float, default=1e-3, help="Learning rate")
 parser.add_argument('--grad_clip', type=float, default=0, help="Min-Max value clipping")
 parser.add_argument('--input_size', type=int, default=28, help="Input size")
 parser.add_argument('--truncation', type=int, default=28, help="Truncation of time steps for updates")
+parser.add_argument('--seed', type=int, default=-1, help="Fix random seed if >=0")
 
 args = parser.parse_args()
+
+if args.seed >= 0:
+    set_seed(args.seed)
 
 assert args.dataroot is not None, "No dataroot provided."
 if args.resultroot is None:
@@ -48,7 +53,7 @@ device = (
 )
 
 if args.permuted:
-    assert 784 / args.input_size == 0, "Input size should be a divisor of 784 when permuting MNIST."
+    assert 784 % args.input_size == 0, "Input size should be a divisor of 784 when permuting MNIST."
     p = torch.randperm(int(784 / args.input_size))
 
 @torch.no_grad()

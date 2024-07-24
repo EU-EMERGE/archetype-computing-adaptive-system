@@ -8,7 +8,6 @@ from tqdm import tqdm
 from acds.archetypes.utils import count_parameters
 
 from acds.archetypes import (
-    PhysicallyImplementableRandomizedOscillatorsNetwork,
     TrainedPhysicallyImplementableRandomizedOscillatorsNetwork,
     hcoRNN
 )

@@ -8,7 +8,6 @@ from tqdm import tqdm
 from acds.archetypes.utils import count_parameters
 
 from acds.archetypes import (
-    PhysicallyImplementableRandomizedOscillatorsNetwork,
     TrainedPhysicallyImplementableRandomizedOscillatorsNetwork,
     hcoRNN
 )
@@ -26,7 +25,7 @@ parser.add_argument('--modelname', type=str, default="hcornn", choices=["trained
 parser.add_argument("--train_oscillators", action="store_true")
 parser.add_argument("--train_recurrent", action="store_true")
 parser.add_argument("--batch", type=int, default=30, help="batch size")
-parser.add_argument("--lag", type=int, default=1, help="prediction lag")
+parser.add_argument("--lag", type=int, default=84, help="prediction lag")
 parser.add_argument(
     "--dt", type=float, default=0.01, help="step size <dt> of the coRNN"
 )

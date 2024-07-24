@@ -201,6 +201,7 @@ class GRU_DFA(RNN_DFA):
                 new_value = p - lr * dW[2]
                 p.copy_(new_value)
 
+
 class LSTM(nn.Module):
     """LSTM model with a readout layer."""
 

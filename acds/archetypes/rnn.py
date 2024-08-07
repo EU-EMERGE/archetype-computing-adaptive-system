@@ -73,24 +73,20 @@ class RNN_DFA(nn.Module):
         else:
             return output
 
-    @torch.no_grad()
-    def update_weights(self, last_hidden, dW, dV, db, error, lr):
-        for name, p in self.state_dict().items():
+    def compute_update(self, last_hidden, dW, dV, db, error):
+        for name, p in self.named_parameters():
             if 'Wout.weight' in name:
-                new_value = p - lr * (torch.matmul(error.T, last_hidden) / float(last_hidden.size(0)))
-                p.copy_(new_value)
+                new_value = torch.matmul(error.T, last_hidden) / float(last_hidden.size(0))
+                p.grad = new_value.clone()
             elif 'Wout.bias' in name:
-                new_value = p - lr * error.mean(dim=0)
-                p.copy_(new_value)
+                new_value = error.mean(dim=0)
+                p.grad = new_value.clone()
             elif 'W1.weight' in name:
-                new_value = p - lr * dW
-                p.copy_(new_value)
+                p.grad = dW.clone()
             elif 'W1.bias' in name:
-                new_value = p - lr * db
-                p.copy_(new_value)
+                p.grad = db.clone()
             elif 'V1.weight' in name:
-                new_value = p - lr * dV
-                p.copy_(new_value)
+                p.grad = dV.clone()
 
 
 class GRU_DFA(RNN_DFA):
@@ -170,36 +166,28 @@ class GRU_DFA(RNN_DFA):
         else:
             return output
 
-    @torch.no_grad()
-    def update_weights(self, last_hidden, dW, dV, db, error, lr):
-        for name, p in self.state_dict().items():
+    def compute_update(self, last_hidden, dW, dV, db, error):
+        for name, p in self.named_parameters():
             if 'Wout.weight' in name:
-                new_value = p - lr * (torch.matmul(error.T, last_hidden) / float(last_hidden.size(0)))
-                p.copy_(new_value)
+                new_value = torch.matmul(error.T, last_hidden) / float(last_hidden.size(0))
+                p.grad = new_value.clone()
             elif 'Wout.bias' in name:
-                new_value = p - lr * error.mean(dim=0)
-                p.copy_(new_value)
+                new_value = error.mean(dim=0)
+                p.grad = new_value.clone()
             elif 'W1.weight' in name:
-                new_value = p - lr * dW[0]
-                p.copy_(new_value)
+                p.grad = dW[0].clone()
             elif 'V1.bias' in name:
-                new_value = p - lr * db[0]
-                p.copy_(new_value)
+                p.grad = db[0].clone()
             elif 'V1.weight' in name:
-                new_value = p - lr * dV[0]
-                p.copy_(new_value)
+                p.grad = dV[0].clone()
             elif 'V2.weight' in name:
-                new_value = p - lr * dV[1]
-                p.copy_(new_value)
+                p.grad = dV[1].clone()
             elif 'V3.weight' in name:
-                new_value = p - lr * dV[2]
-                p.copy_(new_value)
+                p.grad = dV[2].clone()
             elif 'W2.weight' in name:
-                new_value = p - lr * dW[1]
-                p.copy_(new_value)
+                p.grad = dW[1].clone()
             elif 'W3.weight' in name:
-                new_value = p - lr * dW[2]
-                p.copy_(new_value)
+                p.grad = dW[2].clone()
 
 
 class LSTM(nn.Module):

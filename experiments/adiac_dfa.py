@@ -88,6 +88,7 @@ for i in range(args.trials):
         raise ValueError("Wrong model name")
 
     criterion = torch.nn.NLLLoss()  # only used for reporting
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     total_params, total_trainable_params = count_parameters(model)
     print(f"Total parameters model: {total_params}")
     print(f"Total trainable parameters model: {total_trainable_params}")
@@ -98,7 +99,8 @@ for i in range(args.trials):
             x = x.to(device)
             y = y.to(device).long()
             output, hidden, dW, dV, dbW, error = model(x, y=y.squeeze(-1))
-            model.update_weights(hidden, dW, dV, dbW, error, args.lr)
+            model.compute_update(hidden, dW, dV, dbW, error)
+            optimizer.step()
             loss = criterion(torch.log(output), y.squeeze(-1))
         train_acc = test(model, train_loader)
         acc = test(model, valid_loader) if not args.use_test else test(model, test_loader)

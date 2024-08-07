@@ -141,6 +141,7 @@ def get_hidden_topology(
         n_hid = A.shape[0]
         sparsity = 100 * (n_hid**2 - np.count_nonzero(A)) / n_hid**2
         return sparsity
+    assert sparsity >= 0 and sparsity < 1, "Sparsity must be in [0,1)"
 
     if topology == "full":
         h2h = 2 * (2 * torch.rand(n_hid, n_hid) - 1)

@@ -26,14 +26,14 @@ class RNN_DFA(nn.Module):
     def forward(self, x, y=None):
         hidden = self.initHidden(x.shape[0])
 
-        preact_list = [hidden]
+        act_list = [hidden]  # will have len=seq_len+1
 
         for t in range(x.size(1)):
             preact = self.V1(x[:, t]) + self.W1(hidden)
             hidden = torch.tanh(preact)
 
             if y is not None:
-                preact_list.append(preact)
+                act_list.append(hidden)
 
         output = torch.softmax(self.Wout(hidden), dim=-1)
 
@@ -49,10 +49,9 @@ class RNN_DFA(nn.Module):
             dbW = torch.zeros(x.size(0), self.hidden_size, device=self.device)
 
             for t in list(reversed(range(x.size(1))))[:truncation]:
-                h = torch.tanh(preact_list[t])
-                derivative = 1 - h ** 2
+                derivative = 1 - act_list[t] ** 2
                 # batched outer product
-                dW += torch.einsum('bh,bH->bhH', Be * derivative, torch.tanh(preact_list[t-1]))
+                dW += torch.einsum('bh,bH->bhH', Be * derivative, act_list[t-1])
                 dV += torch.einsum('bh,bi->bhi', B2e * derivative, x[:, t])
                 dbW += Be * derivative
 
@@ -107,16 +106,16 @@ class GRU_DFA(RNN_DFA):
     def forward(self, x, y=None):
         hidden = self.initHidden(x.shape[0])
 
-        rs_t, zs_t, hs_t, hiddens = [], [], [], []
+        rs_t, zs_t, hs_t, hiddens = [], [], [], [hidden]
         for t in range(x.size(1)):
             z = torch.sigmoid(self.W2(hidden) + self.V2(x[:, t]))
             r = torch.sigmoid(self.W3(hidden) + self.V3(x[:, t]))
             h = torch.tanh(self.V1(x[:, t]) + self.W1(hidden * r))
+            hidden = ((1 - z) * h) + (z * hidden)
             rs_t.append(r)
             zs_t.append(z)
             hs_t.append(h)
             hiddens.append(hidden)
-            hidden = ((1 - z) * h) + (z * hidden)
 
         output = torch.softmax(self.Wout(hidden), dim=-1)
 
@@ -136,17 +135,17 @@ class GRU_DFA(RNN_DFA):
             db = [torch.zeros(x.size(0), self.hidden_size, device=self.device) for _ in range(3)]
 
             for t in list(reversed(range(x.size(1))))[:truncation]:
-                zgate = ((-BV2e * hiddens[t-1]) + (-BV2e * hs_t[t])) * (rs_t[t] * (1 - rs_t[t]))
+                zgate = ((BV2e * hiddens[t-1]) + (-BV2e * hs_t[t])) * (rs_t[t] * (1 - rs_t[t]))
                 dV[1] += torch.einsum('bh,bi->bhi', zgate, x[:, t])
-                dW[1] += torch.einsum('bh,bH->bhH', ((-BW2e * hiddens[t-1]) + (-BW2e * hs_t[t])) * (rs_t[t] * (1 - rs_t[t])), hiddens[t-1])
+                dW[1] += torch.einsum('bh,bH->bhH', ((BW2e * hiddens[t-1]) + (-BW2e * hs_t[t])) * (rs_t[t] * (1 - rs_t[t])), hiddens[t-1])
                 db[1] += zgate
-                rgate = (self.W1((-BV3e * (1-zs_t[t])) * (1-hs_t[t]**2)) * hiddens[t-1]) * (rs_t[t] * (1 - rs_t[t]))
+                rgate = (self.W1((BV3e * (1-zs_t[t])) * (1-hs_t[t]**2)) * hiddens[t-1]) * (rs_t[t] * (1 - rs_t[t]))
                 dV[2] += torch.einsum('bh,bi->bhi', rgate, x[:, t])
-                dW[2] += torch.einsum('bh,bH->bhH', (self.W1((-BW3e * (1-zs_t[t])) * (1-hs_t[t]**2)) * hiddens[t-1]) * (rs_t[t] * (1 - rs_t[t])), hiddens[t-1])
+                dW[2] += torch.einsum('bh,bH->bhH', (self.W1((BW3e * (1-zs_t[t])) * (1-hs_t[t]**2)) * hiddens[t-1]) * (rs_t[t] * (1 - rs_t[t])), hiddens[t-1])
                 db[2] += rgate
-                hgate = self.W1((-BV1e * (1-zs_t[t]))) * (1-hs_t[t]**2)
+                hgate = self.W1((BV1e * (1-zs_t[t]))) * (1-hs_t[t]**2)
                 dV[0] += torch.einsum('bh,bi->bhi', hgate, x[:, t])
-                dW[0] += torch.einsum('bh,bH->bhH', self.W1((-BW1e * (1-zs_t[t]))) * (1-hs_t[t]**2), rs_t[t] * hiddens[t-1])
+                dW[0] += torch.einsum('bh,bH->bhH', self.W1((BW1e * (1-zs_t[t]))) * (1-hs_t[t]**2), rs_t[t] * hiddens[t-1])
                 db[0] += hgate
 
             # normalize by batch size

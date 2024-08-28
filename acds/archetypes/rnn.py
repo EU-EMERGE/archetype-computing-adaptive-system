@@ -192,17 +192,21 @@ class GRU_DFA(RNN_DFA):
 class LSTM(nn.Module):
     """LSTM model with a readout layer."""
 
-    def __init__(self, n_inp: int, n_hid: int, n_out: int, gru: bool = False):
+    def __init__(self, n_inp: int, n_hid: int, n_out: int, gru: bool = False, rnn: bool = False):
         """Initialize the model.
 
         Args:
             n_inp (int): Number of input units.
             n_hid (int): Number of hidden units.
             n_out (int): Number of output units.
+            gru (bool, optional): Use GRU instead of LSTM. Defaults to False.
+            rnn (bool, optional): Use RNN instead of LSTM. Defaults to False.
         """
         super().__init__()
         if gru:
             self.rnn = torch.nn.GRU(n_inp, n_hid, batch_first=True, num_layers=1)
+        elif rnn:
+            self.rnn = torch.nn.RNN(n_inp, n_hid, batch_first=True, num_layers=1)
         else:
             self.rnn = torch.nn.LSTM(n_inp, n_hid, batch_first=True, num_layers=1)
         self.readout = torch.nn.Linear(n_hid, n_out)

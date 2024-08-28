@@ -7,7 +7,7 @@ from numpy import sqrt
 class TrainedPhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
     def __init__(self, n_inp, n_hid, dt, gamma, epsilon, device='cpu',
                  matrix_friction=False, train_oscillators=False,
-                 train_recurrent=True):
+                 train_recurrent=True, noisy=False):
         super().__init__()
 
         self.n_hid = n_hid
@@ -15,6 +15,7 @@ class TrainedPhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
         self.dt = dt
         self.matrix_friction = matrix_friction
         self.train_oscillators = train_oscillators
+        self.noisy = noisy
 
         assert not self.train_oscillators or isinstance(gamma, tuple) and isinstance(epsilon, tuple), \
             "If train_oscillators is True, gamma and epsilon must be tuples."
@@ -69,17 +70,19 @@ class TrainedPhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
         self.x2h = nn.Parameter(x2h, requires_grad=True)
 
     def cell(self, x, hy, hz):
-        i2h = torch.matmul(x, self.x2h)
+        i2h = torch.tanh(torch.matmul(x, self.x2h))
+        with torch.no_grad():
+            if self.noisy:
+                i2h += torch.randn_like(i2h, device=x.device) * 0.01
+
         h2h = torch.matmul(hy, self.h2h) + self.bias
         h2h_T = torch.transpose(self.h2h,0,1)
 
         if self.matrix_friction:
-            hz = hz + self.dt * (torch.tanh(i2h) -
-                                 torch.matmul(torch.tanh(h2h), h2h_T) -
+            hz = hz + self.dt * (i2h - torch.matmul(torch.tanh(h2h), h2h_T) -
                                  torch.matmul(hy, self.gamma) - torch.matmul(hz, self.epsilon))
         else:
-            hz = hz + self.dt * (torch.tanh(i2h) -
-                                 torch.matmul(torch.tanh(h2h), h2h_T) -
+            hz = hz + self.dt * (i2h - torch.matmul(torch.tanh(h2h), h2h_T) -
                                  self.gamma * hy - self.epsilon * hz)
 
         hy = hy + self.dt * hz

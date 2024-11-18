@@ -43,10 +43,11 @@ class RandomizedOscillatorsNetwork(nn.Module):
         dt: float,
         gamma: Union[float, Tuple[float, float]],
         epsilon: Union[float, Tuple[float, float]],
+        diffusive_gamma: float,
         rho: float,
         input_scaling: float,
         topology: Literal[
-            "full", "lower", "orthogonal", "band", "ring", "toeplitz"
+            "full", "lower", "orthogonal", "band", "ring", "toeplitz", "antisymmetric"
         ] = "full",
         reservoir_scaler=0.0,
         sparsity=0.0,
@@ -62,12 +63,13 @@ class RandomizedOscillatorsNetwork(nn.Module):
                 randomly sampled from a uniform distribution between the two values.
             epsilon (float or tuple): Stiffness factor. If tuple, the stiffness factor
                 is randomly sampled from a uniform distribution between the two values.
+            diffusive_gamma (float): Diffusive term to ensure stability of the forward Euler method.
             rho (float): Spectral radius of the hidden-to-hidden weight matrix.
             input_scaling (float): Scaling factor for the input-to-hidden weight matrix.
                 Wrt original paper here we initialize input-hidden in (0, 1) instead of (-2, 2).
                 Therefore, when taking input_scaling from original paper, we recommend to multiply it by 2.
             topology (str): Topology of the hidden-to-hidden weight matrix. Options are
-                'full', 'lower', 'orthogonal', 'band', 'ring', 'toeplitz'. Default is
+                'full', 'lower', 'orthogonal', 'band', 'ring', 'toeplitz', 'antisymmetric'. Default is
                 'full'.
             reservoir_scaler (float): Scaling factor for the hidden-to-hidden weight
                 matrix.
@@ -78,6 +80,7 @@ class RandomizedOscillatorsNetwork(nn.Module):
         self.n_hid = n_hid
         self.device = device
         self.dt = dt
+        self.diffusive_matrix = diffusive_gamma * torch.eye(n_hid).to(device)
         if isinstance(gamma, tuple):
             gamma_min, gamma_max = gamma
             self.gamma = (
@@ -98,7 +101,8 @@ class RandomizedOscillatorsNetwork(nn.Module):
             self.epsilon = epsilon
 
         h2h = get_hidden_topology(n_hid, topology, sparsity, reservoir_scaler)
-        h2h = spectral_norm_scaling(h2h, rho)
+        if topology != 'antisymmetric':
+            h2h = spectral_norm_scaling(h2h, rho)              
         self.h2h = nn.Parameter(h2h, requires_grad=False)
 
         x2h = torch.rand(n_inp, n_hid) * input_scaling
@@ -118,7 +122,7 @@ class RandomizedOscillatorsNetwork(nn.Module):
         """
         hz = hz + self.dt * (
             torch.tanh(
-                torch.matmul(x, self.x2h) + torch.matmul(hy, self.h2h) + self.bias
+                torch.matmul(x, self.x2h) + torch.matmul(hy, self.h2h - self.diffusive_matrix) + self.bias
             )
             - self.gamma * hy
             - self.epsilon * hz

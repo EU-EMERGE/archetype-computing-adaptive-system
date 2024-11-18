@@ -52,17 +52,24 @@ parser.add_argument("--matrix_friction", action="store_true")
 parser.add_argument("--input_fn", type=str, default="linear", choices=["linear", "mlp"],
                     help="input preprocessing modality")
 
+parser.add_argument("--diffusive_gamma", type=float, default=0.0, help="diffusive term")
+
 parser.add_argument("--inp_scaling", type=float, default=1.0, help="ESN input scaling")
 parser.add_argument("--use_test", action="store_true")
 parser.add_argument(
     "--trials", type=int, default=1, help="How many times to run the experiment"
 )
-parser.add_argument("--save", action="store_true", help="Save the model in the same folder as the results.")
-parser.add_argument("--load", action="store_true", help="Load the last saved model. Train only the readout.")
-parser.add_argument("--noisy", action="store_true", help="Add gaussian noise in input-to-hidden and reservoir activations.")
 
 parser.add_argument('--epochs', type=int, default=10, help="Number of epochs")
 parser.add_argument('--lr', type=float, default=1e-3, help="Learning rate")
+
+parser.add_argument(
+    "--topology",
+    type=str,
+    default="orthogonal",
+    choices=["orthogonal", "antisymmetric"],
+    help="Topology of the h2h matrix",
+)
 
 args = parser.parse_args()
 
@@ -83,19 +90,15 @@ device = (
 
 @torch.no_grad()
 def test(data_loader, readout):
-    model.noisy = args.noisy
     activations, ys = [], []
     for x, y in tqdm(data_loader):
         x = x.to(device)
         y = y.to(device).long()
         output = model(x)[-1][0]
-        if args.noisy:
-            output += torch.randn_like(output, device=device) * 0.01
         activations.append(output)
         ys.append(y)
     activations = torch.cat(activations, dim=0)
     ys = torch.cat(ys, dim=0).squeeze(-1)
-    model.noisy = False
     return (torch.argmax(readout(activations), dim=-1) == ys).float().mean().item()
 
 
@@ -125,13 +128,14 @@ for i in range(args.trials):
             n_inp,
             args.n_hid,
             args.dt,
+            args.diffusive_gamma,
             gamma,
             epsilon,
             device=device,
             matrix_friction=args.matrix_friction,
             train_oscillators=args.train_oscillators,
             train_recurrent=args.train_recurrent,
-            noisy=False  # automatically set to False during inference if args.noisy
+            topology=args.topology
         ).to(device)
     elif args.modelname == 'hcornn':
         model = hcoRNN(
@@ -146,16 +150,6 @@ for i in range(args.trials):
         ).to(device)
     else:
         raise ValueError("Wrong model choice.")
-
-    if args.load:
-        model.load_state_dict(torch.load(os.path.join(
-            args.resultroot, f"TrainedAdiac_{args.modelname}{args.resultsuffix}.pt")))
-        with torch.no_grad():
-            for param in model.parameters():
-                # change the value of param randomly by 20%
-                randomsign = (torch.randint_like(param, low=0, high=2) * 2) - 1
-                param += (param * 0.2) * randomsign.float()
-                param.requires_grad = False
 
     readout = torch.nn.Linear(args.n_hid, n_out).to(device)
     optimizer_res = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -197,11 +191,10 @@ for i in range(args.trials):
     valid_accs.append(valid_acc)
     test_accs.append(test_acc)
 
-if args.save:
-    torch.save(model.state_dict(), os.path.join(args.resultroot,
-                                                f"TrainedAdiac_{args.modelname}{args.resultsuffix}.pt"))
-
-f = open(os.path.join(args.resultroot, f"TrainedAdiac_log_{args.modelname}{args.resultsuffix}.txt"), "a")
+if args.modelname == "trainedpron":
+    f = open(os.path.join(args.resultroot, f"TrainedAdiac_log_{args.modelname}{args.topology}{args.resultsuffix}.txt"), "a")
+else:
+    f = open(os.path.join(args.resultroot, f"TrainedAdiac_log_{args.modelname}{args.resultsuffix}.txt"), "a")
 
 ar = ""
 for k, v in vars(args).items():

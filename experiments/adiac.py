@@ -58,6 +58,7 @@ parser.add_argument("--matrix_friction", action="store_true")
 parser.add_argument("--input_fn", type=str, default="linear", choices=["linear", "mlp"],
                     help="input preprocessing modality")
 
+parser.add_argument("--diffusive_gamma", type=float, default=0.0, help="diffusive term")
 parser.add_argument("--inp_scaling", type=float, default=1.0, help="ESN input scaling")
 parser.add_argument("--rho", type=float, default=0.99, help="ESN spectral radius")
 parser.add_argument("--leaky", type=float, default=1.0, help="ESN spectral radius")
@@ -69,7 +70,7 @@ parser.add_argument(
     "--topology",
     type=str,
     default="full",
-    choices=["full", "ring", "band", "lower", "toeplitz", "orthogonal"],
+    choices=["full", "ring", "band", "lower", "toeplitz", "orthogonal", "antisymmetric"],
     help="Topology of the reservoir",
 )
 parser.add_argument(
@@ -154,6 +155,7 @@ for i in range(args.trials):
             args.dt,
             gamma,
             epsilon,
+            args.diffusive_gamma,
             args.rho,
             args.inp_scaling,
             topology=args.topology,
@@ -171,7 +173,7 @@ for i in range(args.trials):
             args.inp_scaling,
             device=device,
             input_function=args.input_fn,
-            matrix_friction=args.matrix_friction,
+            matrix_friction=args.matrix_friction
         ).to(device)
     elif args.mspron:
         model = MultistablePhysicallyImplementableRandomizedOscillatorsNetwork(

@@ -59,6 +59,9 @@ parser.add_argument("--use_test", action="store_true")
 parser.add_argument(
     "--trials", type=int, default=1, help="How many times to run the experiment"
 )
+parser.add_argument("--save", action="store_true", help="Save the model in the same folder as the results.")
+parser.add_argument("--load", action="store_true", help="Load the last saved model. Train only the readout.")
+parser.add_argument("--noisy", action="store_true", help="Add gaussian noise in input-to-hidden and reservoir activations.")
 
 parser.add_argument('--epochs', type=int, default=10, help="Number of epochs")
 parser.add_argument('--lr', type=float, default=1e-3, help="Learning rate")

@@ -12,7 +12,7 @@ from acds.archetypes.utils import (
 
 
 class TrainedPhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
-    def __init__(self, n_inp, n_hid, dt, diffusive_gamma, gamma, epsilon, device='cpu',
+    def __init__(self, n_inp, n_hid, dt, diffusive_gamma=0.0, gamma, epsilon, device='cpu',
                  matrix_friction=False, train_oscillators=False,
                  train_recurrent=True, 
                  topology: Literal["orthogonal", "antisymmetric"] = "orthogonal",

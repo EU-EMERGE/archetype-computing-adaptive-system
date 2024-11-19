@@ -43,7 +43,7 @@ class RandomizedOscillatorsNetwork(nn.Module):
         dt: float,
         gamma: Union[float, Tuple[float, float]],
         epsilon: Union[float, Tuple[float, float]],
-        diffusive_gamma: float,
+        diffusive_gamma=0.0,
         rho: float,
         input_scaling: float,
         topology: Literal[

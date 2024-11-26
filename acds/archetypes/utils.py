@@ -116,10 +116,22 @@ def spectral_norm_scaling(
     rho_curr = max(abs(e))
     return W * (rho_desired / rho_curr)
 
+def antisymmetric_matrix(
+    W: torch.FloatTensor  
+) -> torch.FloatTensor:
+    """Transforms W to have an antisymmetric matrix
+    
+    Args:
+        W (torch.FloatTensor): input matrix to be transformed
+
+    Returns:
+        torch.FloatTensor: transformed matrix
+    """
+    return (W - W.mT)
 
 def get_hidden_topology(
     n_hid: int,
-    topology: Literal["full", "lower", "orthogonal", "band", "ring", "toeplitz"],
+    topology: Literal["full", "lower", "orthogonal", "band", "ring", "toeplitz", "antisymmetric"],
     sparsity: float,
     scaler: float,
 ) -> torch.FloatTensor:
@@ -129,7 +141,7 @@ def get_hidden_topology(
     Args:
         n_hid (int): number of hidden units.
         topology (str): topology of the hidden-to-hidden weight matrix. Options
-            are 'full', 'lower', 'orthogonal', 'band', 'ring', 'toeplitz'.
+            are 'full', 'lower', 'orthogonal', 'band', 'ring', 'toeplitz', 'antisymmetric'.
         sparsity (float): sparsity of the hidden-to-hidden weight matrix.
         scaler (float): scaling factor for the hidden-to-hidden weight matrix.
 
@@ -190,6 +202,9 @@ def get_hidden_topology(
         h2h = toeplitz(list(lowerdiagcoefs), list(upperdiagcoefs))
         get_sparsity(h2h)
         h2h = torch.Tensor(h2h)
+    elif topology == "antisymmetric":
+        h2h = torch.triu(torch.randn(n_hid, n_hid, dtype=torch.float32))
+        h2h = antisymmetric_matrix(h2h)
     else:
         raise ValueError(
             "Invalid topology. Options are 'full', 'lower', 'orthogonal', 'band', 'ring', 'toeplitz'"

@@ -3,19 +3,28 @@ import torch
 import warnings
 from numpy import sqrt
 
+from typing import (
+    Literal,
+)
+from acds.archetypes.utils import (
+    get_hidden_topology,
+)
+
 
 class TrainedPhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
-    def __init__(self, n_inp, n_hid, dt, gamma, epsilon, device='cpu',
+    def __init__(self, n_inp, n_hid, dt, diffusive_gamma=0.0, gamma, epsilon, device='cpu',
                  matrix_friction=False, train_oscillators=False,
-                 train_recurrent=True, noisy=False):
+                 train_recurrent=True, 
+                 topology: Literal["orthogonal", "antisymmetric"] = "orthogonal",
+                ):
         super().__init__()
 
         self.n_hid = n_hid
         self.device = device
         self.dt = dt
+        self.diffusive_matrix = diffusive_gamma * torch.eye(n_hid).to(device)
         self.matrix_friction = matrix_friction
         self.train_oscillators = train_oscillators
-        self.noisy = noisy
 
         assert not self.train_oscillators or isinstance(gamma, tuple) and isinstance(epsilon, tuple), \
             "If train_oscillators is True, gamma and epsilon must be tuples."
@@ -59,8 +68,11 @@ class TrainedPhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
             self.gamma = nn.Parameter(self.gamma, requires_grad=True)
             self.epsilon = nn.Parameter(self.epsilon, requires_grad=True)
 
-        h2h = torch.empty(n_hid, n_hid, device=device)
-        nn.init.orthogonal_(h2h)
+        if topology == "antisymmetric":
+            h2h = get_hidden_topology(n_hid, topology, 0, 0)
+        else:
+            h2h = torch.empty(n_hid, n_hid, device=device)
+            nn.init.orthogonal_(h2h)
         self.h2h = nn.Parameter(h2h, requires_grad=train_recurrent)
 
         bias = (torch.rand(n_hid) * 2 - 1)
@@ -70,19 +82,18 @@ class TrainedPhysicallyImplementableRandomizedOscillatorsNetwork(nn.Module):
         self.x2h = nn.Parameter(x2h, requires_grad=True)
 
     def cell(self, x, hy, hz):
-        i2h = torch.tanh(torch.matmul(x, self.x2h))
-        with torch.no_grad():
-            if self.noisy:
-                i2h += torch.randn_like(i2h, device=x.device) * 0.01
-
-        h2h = torch.matmul(hy, self.h2h) + self.bias
-        h2h_T = torch.transpose(self.h2h,0,1)
-
+        i2h = torch.matmul(x, self.x2h)
+        w = self.h2h - self.diffusive_matrix
+        h2h = torch.matmul(hy, w) + self.bias
+        h2h_T = torch.transpose(w,0,1)
+        
         if self.matrix_friction:
-            hz = hz + self.dt * (i2h - torch.matmul(torch.tanh(h2h), h2h_T) -
+            hz = hz + self.dt * (torch.tanh(i2h) -
+                                 torch.matmul(torch.tanh(h2h), h2h_T) -
                                  torch.matmul(hy, self.gamma) - torch.matmul(hz, self.epsilon))
         else:
-            hz = hz + self.dt * (i2h - torch.matmul(torch.tanh(h2h), h2h_T) -
+            hz = hz + self.dt * (torch.tanh(i2h) -
+                                 torch.matmul(torch.tanh(h2h), h2h_T) -
                                  self.gamma * hy - self.epsilon * hz)
 
         hy = hy + self.dt * hz

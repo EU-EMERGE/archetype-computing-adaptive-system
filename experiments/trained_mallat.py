@@ -7,39 +7,35 @@ import torch.nn.utils
 from tqdm import tqdm
 from acds.archetypes.utils import count_parameters
 
-from acds.archetypes import (
-    TrainedPhysicallyImplementableRandomizedOscillatorsNetwork,
-    hcoRNN
-)
-from acds.benchmarks import get_mnist_data
+from acds.archetypes import TrainedPhysicallyImplementableRandomizedOscillatorsNetwork
+from acds.benchmarks import get_mallat_data
 
 parser = argparse.ArgumentParser(description="training parameters")
-parser.add_argument("--dataroot", type=str)
 parser.add_argument("--resultroot", type=str)
 parser.add_argument("--resultsuffix", type=str, default="", help="suffix to append to the result file name")
 parser.add_argument(
-    "--n_hid", type=int, default=256, help="hidden size of recurrent net"
+    "--n_hid", type=int, default=66, help="hidden size of recurrent net"
 )
-parser.add_argument('--modelname', type=str, default="hcornn", choices=["trainedpron", "hcornn"],
+parser.add_argument('--modelname', type=str, default="trainedpron", choices=["trainedpron", "hcornn"],
                     help="Model name to use")
 parser.add_argument("--train_oscillators", action="store_true")
 parser.add_argument("--train_recurrent", action="store_true")
-parser.add_argument("--batch", type=int, default=256, help="batch size")
+parser.add_argument("--batch", type=int, default=8, help="batch size")
 parser.add_argument(
     "--dt", type=float, default=0.01, help="step size <dt> of the coRNN"
 )
 parser.add_argument(
-    "--gamma", type=float, default=3
+    "--gamma", type=float, default=0.5
 )
 parser.add_argument(
     "--epsilon",
     type=float,
-    default=5,
+    default=1,
 )
 parser.add_argument(
     "--gamma_range",
     type=float,
-    default=2,
+    default=0.5,
 )
 parser.add_argument(
     "--epsilon_range",
@@ -60,8 +56,8 @@ parser.add_argument(
     "--trials", type=int, default=1, help="How many times to run the experiment"
 )
 
-parser.add_argument('--epochs', type=int, default=10, help="Number of epochs")
-parser.add_argument('--lr', type=float, default=1e-3, help="Learning rate")
+parser.add_argument('--epochs', type=int, default=200, help="Number of epochs")
+parser.add_argument('--lr', type=float, default=0.01, help="Learning rate")
 
 parser.add_argument(
     "--topology",
@@ -72,14 +68,6 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
-
-assert args.dataroot is not None, "No dataroot provided."
-if args.resultroot is None:
-    warnings.warn("No resultroot provided. Using current location as default.")
-    args.resultroot = os.getcwd()
-assert os.path.exists(args.resultroot), \
-    f"{args.resultroot} folder does not exist, please create it and run the script again."
-
 
 device = (
     torch.device("cuda")
@@ -94,7 +82,6 @@ def test(data_loader, readout):
     for x, y in tqdm(data_loader):
         x = x.to(device)
         y = y.to(device).long()
-        x = x.view(x.shape[0], 784, -1)
         output = model(x)[-1][0]
         activations.append(output)
         ys.append(y)
@@ -104,7 +91,7 @@ def test(data_loader, readout):
 
 
 n_inp = 1
-n_out = 10  # classes
+n_out = 8 
 gamma = (args.gamma - args.gamma_range / 2.0, args.gamma + args.gamma_range / 2.0)
 epsilon = (
     args.epsilon - args.epsilon_range / 2.0,
@@ -114,7 +101,13 @@ epsilon = (
 max_test_accs: List[float] = []
 if args.trials > 1:
     assert args.use_test, "Multiple runs are only for the final test phase with the test set."
-train_loader, valid_loader, test_loader = get_mnist_data(args.dataroot, args.batch, 512)
+    train_loader, valid_loader, test_loader = get_mallat_data(
+        args.batch, 256, whole_train=True
+    )
+else:
+    train_loader, valid_loader, test_loader = get_mallat_data(
+        args.batch, args.batch
+    )
 
 train_accs, valid_accs, test_accs = [], [], []
 for i in range(args.trials):
@@ -131,17 +124,6 @@ for i in range(args.trials):
             train_oscillators=args.train_oscillators,
             train_recurrent=args.train_recurrent,
             topology=args.topology
-        ).to(device)
-    elif args.modelname == 'hcornn':
-        model = hcoRNN(
-            n_inp,
-            args.n_hid,
-            args.dt,
-            gamma,
-            epsilon,
-            device=device,
-            matrix_friction=args.matrix_friction,
-            train_oscillators=args.train_oscillators
         ).to(device)
     else:
         raise ValueError("Wrong model choice.")
@@ -163,7 +145,6 @@ for i in range(args.trials):
             optimizer_readout.zero_grad()
             x = x.to(device)
             y = y.to(device).long()
-            x = x.view(x.shape[0], 784, -1)
             output = model(x)[-1][0]
             output = readout(output)
             loss = criterion(output, y.squeeze(-1))
@@ -188,9 +169,7 @@ for i in range(args.trials):
     test_accs.append(test_acc)
 
 if args.modelname == "trainedpron":
-    f = open(os.path.join(args.resultroot, f"TrainedSMNIST_log_{args.modelname}{args.topology}{args.resultsuffix}.txt"), "a")
-else:
-    f = open(os.path.join(args.resultroot, f"TrainedSMNIST_log_{args.modelname}{args.resultsuffix}.txt"), "a")
+    f = open(os.path.join(args.resultroot, f"TrainedMallat_log_{args.modelname}{args.topology}{args.resultsuffix}.txt"), "a")
 
 ar = ""
 for k, v in vars(args).items():

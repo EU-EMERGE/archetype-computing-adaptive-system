@@ -151,3 +151,85 @@ class RandomizedOscillatorsNetwork(nn.Module):
         return torch.stack(all_states, dim=1), [
             hy
         ]  # list to be compatible with ESN implementation
+
+class StackedRandomizedOscillatorsNetwork(nn.Module):
+    """
+    Stacked Randomized Oscillators Network, using two stack of RON model one over another developing depth
+    over.
+    
+    A recurrent deep neural network model with
+    oscillatory dynamics. The model is defined by the following ordinary
+    differential equation:
+
+    .. math::
+        \\dot{h} = -\\gamma h - \\epsilon \\dot{h} + \\tanh(W_{in} x + W_{rec} h + b)
+
+    where:
+    - :math:`h` is the hidden state,
+    - :math:`\\dot{h}` is the derivative of the hidden state,
+    - :math:`\\gamma` is the damping factor,
+    - :math:`\\epsilon` is the stiffness factor,
+    - :math:`W_{in}` is the input-to-hidden weight matrix,
+    - :math:`W_{rec}` is the hidden-to-hidden weight matrix,
+    - :math:`b` is the bias vector.
+
+    The model is trained by minimizing the mean squared error between the output of the
+    model and the target time-series.
+    """
+
+    def __init__(
+        self,
+        n_inp: int,
+        n_hid: int,
+        n_hid_layers: List[int],
+        dt: float,
+        gamma: Union[float, Tuple[float, float]],
+        epsilon: Union[float, Tuple[float, float]],
+        diffusive_gamma=0.0,
+        rho: float = 0.99,
+        input_scaling: float = 1.0,
+        topology: Literal[
+            "full", "lower", "orthogonal", "band", "ring", "toeplitz", "antisymmetric"
+        ] = "full",
+        reservoir_scaler=0.0,
+        sparsity=0.0,
+        device="gpu",
+    ):
+        #TODO Add only a new parameter for layer depth set to 2
+        super().__init__()
+        self.layers = nn.ModuleList()   
+        
+        # init first layer density
+        input_dim = n_inp
+        
+        for n_hid in n_hid_layers:
+            self.layers.append(RandomizedOscillatorsNetwork(input_dim, n_hid, dt, gamma, epsilon, 
+                                                    diffusive_gamma, rho, input_scaling, 
+                                                    topology, reservoir_scaler, sparsity, device
+                                                    )
+            )
+            # next size of hidden layer
+            input_dim = n_hid 
+    
+    
+    def forward(self, hy: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+        """Forward pass on the layers of the StackRON a given input time-series.
+
+        Args:
+            x (torch.Tensor): Input time-series shaped as (batch, time, input_dim).
+
+        Returns:
+            torch.Tensor: Hidden states of the network shaped as (batch, time, n_hid).
+            list: List containing the last hidden state of the network.
+        """
+        print("Foward pass for the layers of StackRON")
+        
+        layer_states = []
+        
+        for layer in self.layers:
+            hy, last_state = layer(hy)
+            layer_states.append(last_state[0])
+            
+        return hy, layer_states
+            
+        

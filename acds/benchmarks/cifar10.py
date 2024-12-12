@@ -25,7 +25,13 @@ def get_cifar10_data(
             transforms.ToTensor()
         ])
     else:
-        transform = transforms.ToTensor()
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.4914, 0.4822, 0.4465],
+                std=[0.247, 0.243, 0.261] 
+            )
+        ])
 
     train_dataset = torchvision.datasets.CIFAR10(
         root=root, train=True, transform=transform, download=True

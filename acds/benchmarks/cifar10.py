@@ -6,36 +6,38 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 
-def get_mnist_data(
-    root: os.PathLike, bs_train: int, bs_test: int, valid_perc: int = 10, permuted: bool = False
+def get_cifar10_data(
+    root: os.PathLike, bs_train: int, bs_test: int, valid_perc: int = 10, grayscale: bool = False
 ):
-    """Get the MNIST dataset and return the train, validation and test dataloaders.
+    """Get the CIFAR-10 dataset and return the train, validation and test dataloaders.
 
     Args:
-        root (os.PathLike): Path to the folder containing the MNIST dataset.
+        root (os.PathLike): Path to the folder containing the CIFAR-10 dataset.
         bs_train (int): Batch size for the train dataloader.
         bs_test (int): Batch size for the validation and test dataloaders.
         valid_perc (int): Percentage of the train dataset to use for
             validation. Defaults to 10.
-        permuted (bool): Whether to apply permutation to images.
+        grayscale (bool): If True, convert the images to grayscale. Default to False.
     """
-    permutation = torch.randperm(28 * 28) if permuted else None 
-    def permute_image(image): 
-        if permutation is not None:
-            image = image.view(-1)[permutation].view(1, 28, 28) 
-        return image 
-    
-    transform = transforms.Compose([ 
-        transforms.ToTensor(), 
-        transforms.Lambda(permute_image) 
-    ])
+    if grayscale:
+        transform = transforms.Compose([
+            transforms.Grayscale(num_output_channels=1),
+            transforms.ToTensor()
+        ])
+    else:
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize(
+                mean=[0.4914, 0.4822, 0.4465],
+                std=[0.247, 0.243, 0.261] 
+            )
+        ])
 
-
-    train_dataset = torchvision.datasets.MNIST(
+    train_dataset = torchvision.datasets.CIFAR10(
         root=root, train=True, transform=transform, download=True
     )
 
-    test_dataset = torchvision.datasets.MNIST(
+    test_dataset = torchvision.datasets.CIFAR10(
         root=root, train=False, transform=transform
     )
 

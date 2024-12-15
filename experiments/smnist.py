@@ -10,7 +10,7 @@ from tqdm import tqdm
 from acds.archetypes import (
     DeepReservoir,
     RandomizedOscillatorsNetwork,
-    StackedRandomizedOscillatorsNetwork,
+    DeepRandomizedOscillatorsNetwork,
     PhysicallyImplementableRandomizedOscillatorsNetwork,
     MultistablePhysicallyImplementableRandomizedOscillatorsNetwork,
     
@@ -57,7 +57,7 @@ parser.add_argument("--esn", action="store_true")
 parser.add_argument("--ron", action="store_true")
 parser.add_argument("--pron", action="store_true")
 parser.add_argument("--mspron", action="store_true")
-parser.add_argument("--stackron", action="store_true")
+parser.add_argument("--deepron", action="store_true")
 parser.add_argument("--diffusive_gamma", type=float, default=0.0, help="diffusive term")
 parser.add_argument("--inp_scaling", type=float, default=1.0, help="ESN input scaling")
 parser.add_argument("--rho", type=float, default=0.99, help="ESN spectral radius")
@@ -176,9 +176,9 @@ for i in range(args.trials):
             args.inp_scaling,
             device=device
         ).to(device)
-    # add Stacked RON here
-    elif args.stackron:
-        model = StackedRandomizedOscillatorsNetwork(
+    # add Deep RON here
+    elif args.deepron:
+        model = DeepRandomizedOscillatorsNetwork(
             n_inp,
             args.n_hid,
             args.n_hid_layers,
@@ -224,8 +224,8 @@ elif args.mspron:
     f = open(os.path.join(args.resultroot, f"sMNIST_log_MSPRON{args.resultsuffix}.txt"), "a")
 elif args.esn:
     f = open(os.path.join(args.resultroot, f"sMNIST_log_ESN{args.resultsuffix}.txt"), "a")
-elif args.stackron:
-    f = open(os.path.join(args.resultroot, f"sMNIST_log_STACKRON{args.resultsuffix}.txt"), "a")
+elif args.deepron:
+    f = open(os.path.join(args.resultroot, f"sMNIST_log_DEEPRON{args.resultsuffix}.txt"), "a")
 else:
     raise ValueError("Wrong model choice.")
 

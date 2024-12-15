@@ -152,13 +152,14 @@ class RandomizedOscillatorsNetwork(nn.Module):
             hy
         ]  # list to be compatible with ESN implementation
 
-class StackedRandomizedOscillatorsNetwork(nn.Module):
+
+class DeepRandomizedOscillatorsNetwork(nn.Module):
     """
-    Stacked Randomized Oscillators Network, using two stack of RON model one over another developing depth
+    Deep Randomized Oscillators Network, using two stack of RON model one over another developing depth
     over.
     
     A recurrent deep neural network model with
-    oscillatory dynamics. The model is defined by the following ordinary
+    oscillatory dynamics stacked in layers. The model is defined by the following ordinary
     differential equation:
 
     .. math::
@@ -185,6 +186,8 @@ class StackedRandomizedOscillatorsNetwork(nn.Module):
         dt: float,
         gamma: Union[float, Tuple[float, float]],
         epsilon: Union[float, Tuple[float, float]],
+        # TODO if need add 
+        # tot_units: int = 500,
         diffusive_gamma=0.0,
         rho: float = 0.99,
         input_scaling: float = 1.0,
@@ -193,14 +196,38 @@ class StackedRandomizedOscillatorsNetwork(nn.Module):
         ] = "full",
         reservoir_scaler=0.0,
         sparsity=0.0,
-        device="gpu",
+        device="cuda",
+        concat: bool = True,
+        # maybe add and other sparse connectivity later
+        # connectivity_inter: int = 10
     ):
-        #TODO Add only a new parameter for layer depth set to 2
         super().__init__()
-        self.layers = nn.ModuleList()   
         
+        # check if CUDA is on
+        if not torch.cuda.is_available():
+            device = "cpu"
+        else:
+            device = "cuda" 
+        
+        self.layers = nn.ModuleList()   
         # init first layer density
         input_dim = n_inp
+        
+        self.concat = concat
+        # what means batch_first?
+        # if True, then the input and output tensors are provided as (batch, seq, feature)
+        # TODO should we add this?
+        #self.batch_first = True
+        
+        
+        ## -- Layer units questions --
+        # TODO maybe to be in line with DeepReservoir we should do this
+        # if concat layers_unit = tot_units//len(n_hid_layers)
+        # else layers_unit = tot_units
+        # for now we give a list of integer represeting the number of units in each layer
+        # Does something changes if different layers have different number of units? 
+        # Theorically yes
+        ## end
         
         for n_hid in n_hid_layers:
             self.layers.append(RandomizedOscillatorsNetwork(input_dim, n_hid, dt, gamma, epsilon, 
@@ -213,7 +240,7 @@ class StackedRandomizedOscillatorsNetwork(nn.Module):
     
     
     def forward(self, hy: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
-        """Forward pass on the layers of the StackRON a given input time-series.
+        """Forward pass on the layers of the DeepRON a given input time-series.
 
         Args:
             x (torch.Tensor): Input time-series shaped as (batch, time, input_dim).
@@ -222,14 +249,31 @@ class StackedRandomizedOscillatorsNetwork(nn.Module):
             torch.Tensor: Hidden states of the network shaped as (batch, time, n_hid).
             list: List containing the last hidden state of the network.
         """
-        print("Foward pass for the layers of StackRON")
-        
+        # list to store the last state of each layer
         layer_states = []
+        # list to store the hidden states of each layer
+        states = []
         
         for layer in self.layers:
             hy, last_state = layer(hy)
+            states.append(hy)
             layer_states.append(last_state[0])
+        
+        if self.concat:
+            # check what dim we need to concat
+            hy = torch.cat(states, dim=2)
+        else:
+            # if not concat, return only the last layer
+            hy = states[-1]
             
+        # TODO: Debug to check if the shapes are correct
+        # with a 2 layer model we should get if concat is True
+        # torch.Size([1, 100, 200])
+        # else torch.Size([1, 100, 100])
+        print("Shape of the output", hy.shape)
+        print("Shape of layer states", [state.shape for state in states])
+        print("Shape of the last state of each layer", [state.shape for state in layer_states])
+        print("Shape of the last state of the last layer", layer_states[-1].shape)
+        
         return hy, layer_states
-            
         

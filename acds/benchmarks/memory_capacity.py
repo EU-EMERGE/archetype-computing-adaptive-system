@@ -36,8 +36,7 @@ def generate_memory_capacity_dataset(delay, signal_length=6000, train_length=500
     # so we do this in the memorycapacity.py
 
 
-def get_memory_capacity(delay, washout: int = 100, train_ratio: float = 0.8, test_size: int = 1000
-    ) -> tuple[DataLoader, DataLoader, DataLoader]:
+def get_memory_capacity(delay, washout: int = 100, train_ratio: float = 0.8, test_size: int = 1000):
     """
     Returns the memory capacity dataset as torch tensors.
     
@@ -65,15 +64,18 @@ def get_memory_capacity(delay, washout: int = 100, train_ratio: float = 0.8, tes
     train_size = int(train_ratio * len(u_train_valid))
     u_train, y_train = u_train_valid[:train_size], y_train_valid[:train_size]
     u_val, y_val = u_train_valid[train_size:], y_train_valid[train_size:]
+   
+    # as numpy arrays
+    return (torch.from_numpy(u_train).float(), torch.from_numpy(y_train).float()), (torch.from_numpy(u_val).float(), torch.from_numpy(y_val).float()), (torch.from_numpy(u_test).float(), torch.from_numpy(y_test).float())
+    #train_data = TensorDataset(torch.from_numpy(u_train).float(), torch.from_numpy(y_train).float())
+    #val_data = TensorDataset(torch.from_numpy(u_val).float(), torch.from_numpy(y_val).float())
+    #test_data = TensorDataset(torch.from_numpy(u_test).float(), torch.from_numpy(y_test).float())
     
-    train_data = TensorDataset(torch.from_numpy(u_train).float(), torch.from_numpy(y_train).float())
-    val_data = TensorDataset(torch.from_numpy(u_val).float(), torch.from_numpy(y_val).float())
-    test_data = TensorDataset(torch.from_numpy(u_test).float(), torch.from_numpy(y_test).float())
-    
+    #return DataLoader(train_data, batch_size=1), DataLoader(val_data, batch_size=1), DataLoader(test_data, batch_size=1)
 
 if __name__ == "__main__":
     
-    debug = False
+    debug = True
     
     if debug:
         

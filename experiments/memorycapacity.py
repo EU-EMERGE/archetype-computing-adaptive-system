@@ -3,6 +3,8 @@ import os
 import torch
 import numpy as np
 from tqdm import tqdm
+import warnings
+import wandb
 
 from sklearn import preprocessing
 from sklearn.linear_model import LogisticRegression, Ridge
@@ -16,8 +18,10 @@ from acds.archetypes import (
 from acds.benchmarks import get_memory_capacity
 
 parser = argparse.ArgumentParser(description="training parameters")
-parser.add_argument("--resultroot", type=str)
 
+parser.add_argument("--resultroot", type=str)
+parser.add_argument("--wandb", type=bool, default=False)
+parser.add_argument("--delay", type=int, default=100)
 parser.add_argument("--cpu", action="store_true")
 parser.add_argument("--esn", action="store_true")
 parser.add_argument("--ron", action="store_true")
@@ -46,6 +50,13 @@ parser.add_argument("--trials", type=int, default=1)
 parser.add_argument("--resultsuffix", type=str, default="")
 
 args = parser.parse_args()
+
+if args.wandb == True:
+    wandb.init(project="deep-ron-thesis",
+            config={"architecture": "DeepRON" if args.deepron else "RON" if args.ron else "ESN",
+                    }
+    )
+
 # make sure that n_hid_layers is a list of integers
 args.n_hid_layers = [int(x) for x in args.n_hid_layers.split(",")]
 #print("type of n_hid_layers", type(args.n_hid_layers))
@@ -58,11 +69,14 @@ device = (
     else torch.device("cpu")
 )
 
+if args.resultroot is None:
+    warnings.warn("No resultroot provided. Using current location as default.")
+    args.resultroot = os.getcwd()
 
 n_inp = 1
 n_out = 1
 washout = 100
-delay = 100
+delay = args.delay
 
 def square_correlation(output, target):
     return np.corrcoef(output.flatten(), target.flatten())[0, 1]**2
@@ -92,6 +106,10 @@ def test(dataset, target, classifier, scaler):
     activations = scaler.transform(activations)
     prediction = classifier.predict(activations)
     
+    # wandb logs
+    wandb.log({"prediction": prediction, "target": target})
+
+    
     error = criterion_eval(torch.tensor(prediction), torch.tensor(target))
 
     return error
@@ -106,7 +124,7 @@ epsilon = (
 train_memory, valid_memory, test_memory = 0.0, 0.0, 0.0
 train_memory_list, valid_memory_list, test_memory_list = [], [], []
 # for memory capacity test we run k times because we want iterate over k steps of lag
-memory_test = True
+memory_test = False
 
 if memory_test:
     # the number of trials is the same as the lag
@@ -153,24 +171,23 @@ for i in range(args.trials):
     else:
         raise ValueError("Wrong model choice.")
 
+for i in range(delay):
     (
         (train_dataset, train_target),
         (valid_dataset, valid_target), 
         (test_dataset, test_target) 
         # since we iterate from 0 we need to add 1 to the i in the cycle
-    ) = get_memory_capacity(delay=i+1, washout=washout, train_ratio=0.8, test_size=1000)
+    ) = get_memory_capacity(delay=i+1, train_ratio=0.8, test_size=1000)
 
     # apply washout to the targets
     train_target = train_target[washout:]
     valid_target = valid_target[washout:]
     test_target = test_target[washout:]
     
-
     dataset = train_dataset.reshape(1, -1, 1).to(device)
     target = train_target.reshape(-1, 1).numpy()
     activations = model(dataset)[0].cpu().numpy()
     activations = activations[:, washout:]
-    # washout also the target
     activations = activations.reshape(-1, args.n_hid)
     scaler = preprocessing.StandardScaler().fit(activations)
     activations = scaler.transform(activations)
@@ -195,13 +212,12 @@ for i in range(args.trials):
     test_memory_list.append(test_memory)
      
     print(
-        f"Trial {i+1}/{args.trials} "
+        f"Trial {i+1}/{delay} "
         f"train memory: {round(train_memory, 2)} "
         f"valid memory: {round(valid_memory, 2)} "
         f"test memory: {round(test_memory, 2)}"
     )
-   
-
+    
 if args.ron:
     f = open(os.path.join(args.resultroot, f"MemoryCapacity_log_RON_{args.topology}{args.resultsuffix}.txt"), "a")
 elif args.deepron:

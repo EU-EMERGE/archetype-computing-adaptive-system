@@ -19,8 +19,8 @@ def generate_memory_capacity_dataset(delay, signal_length=6000, train_length=500
     - u: Input signal.
     - y: Target signal with delays.
     """
-    # Generate input signal
-    u = np.random.uniform(low= -0.8, high= 0.8, size = (signal_length + delay, 1), seed=42)
+    # We could remove the seed because we're not "learning" we're just testing the memory capacity
+    u = np.random.uniform(low= -0.8, high= 0.8, size = (signal_length + delay, 1))
     
     u_input = u[delay:]
     u_target = u[:-delay]

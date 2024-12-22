@@ -52,18 +52,23 @@ def get_memory_capacity(delay, train_ratio: float = 0.8, test_size: int = 1000):
     (u_train, y_train), (u_test, y_test) = generate_memory_capacity_dataset(delay)
     
     assert len(u_train) == len(y_train), "Input and target signals must have the same length."
+
+    return (torch.from_numpy(u_train).float(), torch.from_numpy(y_train).float()), (torch.from_numpy(u_test).float(), torch.from_numpy(y_test).float())
+    # ---- For validation later ----
+    # test start after the training set
+    #test_start_idx = len(u_train) - test_size
     
-    test_start_idx = len(u_train) - test_size
-    u_test, y_test = u_train[test_start_idx:], y_train[test_start_idx:]
+    #u_test, y_test = u_train[test_start_idx:], y_train[test_start_idx:]
     
-    u_train_valid, y_train_valid = u_train[:test_start_idx], y_train[:test_start_idx]
-    
-    train_size = int(train_ratio * len(u_train_valid))
-    u_train, y_train = u_train_valid[:train_size], y_train_valid[:train_size]
-    u_val, y_val = u_train_valid[train_size:], y_train_valid[train_size:]
-   
+    #u_train_valid, y_train_valid = u_train[:test_start_idx], y_train[:test_start_idx]
+ 
+    # For now no hypeparams search is required so return train-test
+    #train_size = int(train_ratio * len(u_train_valid))
+    #u_train, y_train = u_train_valid[:train_size], y_train_valid[:train_size]
+    #u_val, y_val = u_train_valid[train_size:], y_train_valid[train_size:]
+
     # as numpy arrays
-    return (torch.from_numpy(u_train).float(), torch.from_numpy(y_train).float()), (torch.from_numpy(u_val).float(), torch.from_numpy(y_val).float()), (torch.from_numpy(u_test).float(), torch.from_numpy(y_test).float())
+    #return (torch.from_numpy(u_train).float(), torch.from_numpy(y_train).float()), (torch.from_numpy(u_val).float(), torch.from_numpy(y_val).float()), (torch.from_numpy(u_test).float(), torch.from_numpy(y_test).float())
 
 if __name__ == "__main__":
     

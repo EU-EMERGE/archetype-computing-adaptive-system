@@ -274,6 +274,7 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
         print("Shape of layer states", [state.shape for state in states])
         print("Shape of the last state of each layer", [state.shape for state in layer_states])
         print("Shape of the last state of the last layer", layer_states[-1].shape)
-        
+       
+        # TODO should we return as list 
         return hy, layer_states
         

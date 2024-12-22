@@ -10,10 +10,14 @@ from tqdm import tqdm
 from acds.archetypes import (
     DeepReservoir,
     RandomizedOscillatorsNetwork,
+    DeepRandomizedOscillatorsNetwork,
     PhysicallyImplementableRandomizedOscillatorsNetwork,
     MultistablePhysicallyImplementableRandomizedOscillatorsNetwork,
+    
 )
 from acds.benchmarks import get_mnist_data
+
+from typing import List
 
 parser = argparse.ArgumentParser(description="training parameters")
 parser.add_argument("--dataroot", type=str)
@@ -22,6 +26,7 @@ parser.add_argument("--resultsuffix", type=str, default="", help="suffix to appe
 parser.add_argument(
     "--n_hid", type=int, default=256, help="hidden size of recurrent net"
 )
+parser.add_argument("--n_hid_layers", type=str, default="256, 256", help="hidden size of recurrent net")
 parser.add_argument("--batch", type=int, default=1000, help="batch size")
 parser.add_argument(
     "--dt", type=float, default=0.042, help="step size <dt> of the coRNN"
@@ -52,6 +57,7 @@ parser.add_argument("--esn", action="store_true")
 parser.add_argument("--ron", action="store_true")
 parser.add_argument("--pron", action="store_true")
 parser.add_argument("--mspron", action="store_true")
+parser.add_argument("--deepron", action="store_true")
 parser.add_argument("--diffusive_gamma", type=float, default=0.0, help="diffusive term")
 parser.add_argument("--inp_scaling", type=float, default=1.0, help="ESN input scaling")
 parser.add_argument("--rho", type=float, default=0.99, help="ESN spectral radius")
@@ -78,6 +84,8 @@ parser.add_argument(
 )
 
 args = parser.parse_args()
+# make sure that n_hid_layers is a list of integers
+args.n_hid_layers = [int(x) for x in args.n_hid_layers.split(",")]
 
 if args.dataroot is None:
     warnings.warn("No dataroot provided. Using current location as default.")
@@ -168,6 +176,20 @@ for i in range(args.trials):
             args.inp_scaling,
             device=device
         ).to(device)
+    # add Deep RON here
+    elif args.deepron:
+        model = DeepRandomizedOscillatorsNetwork(
+            n_inp,
+            args.n_hid,
+            args.n_hid_layers,
+            args.dt,
+            gamma,
+            epsilon,
+            args.diffusive_gamma,
+            args.rho,
+            args.inp_scaling,
+            device=device
+        ).to(device)
     else:
         raise ValueError("Wrong model choice.")
 
@@ -202,6 +224,8 @@ elif args.mspron:
     f = open(os.path.join(args.resultroot, f"sMNIST_log_MSPRON{args.resultsuffix}.txt"), "a")
 elif args.esn:
     f = open(os.path.join(args.resultroot, f"sMNIST_log_ESN{args.resultsuffix}.txt"), "a")
+elif args.deepron:
+    f = open(os.path.join(args.resultroot, f"sMNIST_log_DEEPRON{args.resultsuffix}.txt"), "a")
 else:
     raise ValueError("Wrong model choice.")
 

@@ -47,7 +47,7 @@ parser.add_argument("--rho", type=float, default=0.99)
 parser.add_argument("--inp_scaling", type=float, default=1)
 parser.add_argument("--leaky", type=float, default=1.0, help="ESN spectral radius")
 parser.add_argument("--n_hid_layers", type=str, default="256, 256", help="hidden size of recurrent net")
-parser.add_argument("--n_layers", type=int, default=1, help="Number of layer of ESN")
+parser.add_argument("--n_layers", type=int, default=1, help="Number of layers of ESN")
 parser.add_argument(
     "--sparsity", type=float, default=0.0, help="Sparsity of the reservoir"
 )
@@ -106,7 +106,7 @@ washout = 100
 delay = args.delay
 
 def square_correlation(output, target):
-    return np.corrcoef(output.flatten(), target.flatten())[0, 1]**2
+    return (np.corrcoef(output.flatten(), target.flatten())[0, 1])**2
 
 # set custom criterion eval to square correlation
 def criterion_eval(output, target):
@@ -144,11 +144,6 @@ def plot_statistics(results_dict):
  
 @torch.no_grad()
 def test(dataset, target, classifier, scaler):
-    # Test classifier using memory capacity test
-    # Memory capacity loop over k steps of lag
-    # sums the squared correlation coefficient between the target signal and the predicted signal
-    # returns the sum of the squared correlation coefficient
-    # TODO: Implement the test function
     dataset = dataset.reshape(1, -1, 1).to(device)
     target = target.reshape(-1, 1).numpy()
     
@@ -185,6 +180,7 @@ for t in range(args.trials):
         model = DeepReservoir(
             n_inp,
             tot_units=args.n_hid,
+            n_layers=args.n_layers,
             spectral_radius=args.rho,
             input_scaling=args.inp_scaling,
             connectivity_recurrent=int((1 - args.sparsity) * args.n_hid),
@@ -249,9 +245,6 @@ for t in range(args.trials):
         
         # check shapes or type coming out of model
         print("Train memory: ", train_memory, "Test memory: ", test_memory)
-        
-        train_memory += train_memory
-        test_memory += test_memory
         
         train_memory_dict[i].append(train_memory)
         test_memory_dict[i].append(test_memory)

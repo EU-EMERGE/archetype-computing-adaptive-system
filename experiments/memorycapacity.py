@@ -6,8 +6,10 @@ from tqdm import tqdm
 import warnings
 import wandb
 import matplotlib.pyplot as plt
+import plotly.tools as tls
 import logging
 from collections import defaultdict
+
 
 
 # import plotly
@@ -245,6 +247,9 @@ for t in range(args.trials):
             test(test_dataset, test_target, classifier, scaler) if args.use_test else 0.0
         )
         
+        # check shapes or type coming out of model
+        print("Train memory: ", train_memory, "Test memory: ", test_memory)
+        
         train_memory += train_memory
         test_memory += test_memory
         
@@ -272,10 +277,13 @@ test_memory = sum([sum(v) for k, v in test_memory_dict.items()]) / args.trials
 
 plt = plot_statistics(train_memory_dict)
 plt_test = plot_statistics(test_memory_dict)
+plotly_fig = tls.mpl_to_plotly(plt.gcf())
+plotly_fig_test = tls.mpl_to_plotly(plt_test.gcf())
 
 if args.wandb:
     # save the plot as a wandb artifact
-    wandb.log({"Memory Capacity": plt})
+    wandb.log({"Memory Capacity": plotly_fig})
+    wandb.log({"Memory Capacity Test": plotly_fig_test})
     plt.savefig(os.path.join(args.resultroot, f"MemoryCapacity_plot{args.resultsuffix}{args.delay}.png"))
     plt_test.savefig(os.path.join(args.resultroot, f"MemoryCapacity_test_plot{args.resultsuffix}{args.delay}.png"))
     wandb.log({"train_memory": train_memory, "test_memory": test_memory})

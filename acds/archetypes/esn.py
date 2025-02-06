@@ -252,7 +252,7 @@ class DeepReservoir(torch.nn.Module):
         # state variables projected to the next layer fixed,
         # i.e., the number of trainable parameters does not depend on concat
         if concat:
-            self.layers_units = np.int(tot_units / n_layers)
+            self.layers_units = int(tot_units / n_layers)
         else:
             self.layers_units = tot_units
 

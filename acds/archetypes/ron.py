@@ -181,13 +181,11 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
     def __init__(
         self,
         n_inp: int,
-        n_hid: int,
-        n_hid_layers: List[int],
+        total_units: int,
         dt: float,
         gamma: Union[float, Tuple[float, float]],
         epsilon: Union[float, Tuple[float, float]],
-        # TODO if need add 
-        # tot_units: int = 500,
+        n_layers: int = 1,
         diffusive_gamma=0.0,
         rho: float = 0.99,
         input_scaling: float = 1.0,
@@ -198,46 +196,67 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
         sparsity=0.0,
         device="cuda",
         concat: bool = True,
-        # maybe add and other sparse connectivity later
-        # connectivity_inter: int = 10
+        connectivity_input: int = 10,
+        connectivity_inter: int = 10,
+        connectivity_recurrent: int = 10,
     ):
+        """Initialize the DeepRON model.
+
+        Args:
+            n_inp (int): number of input units. Default to 1
+            total_units (int): Total number of neurons in RON.
+            dt (float): Time step.
+            n_layers (int): Number of layers in the network.
+            concat: (bool): If True, the output of each layer is concatenated. If False, only the output of the last layer is returned.
+        """
         super().__init__()
-        
-        # check if CUDA is on
-        if not torch.cuda.is_available():
-            device = "cpu"
-        else:
-            device = "cuda" 
-        
-        self.layers = nn.ModuleList()   
-        # init first layer density
-        input_dim = n_inp
-        
-        self.concat = concat
-        # what means batch_first?
+        self.n_layers = n_layers
+        self.total_units = total_units
         # if True, then the input and output tensors are provided as (batch, seq, feature)
-        # TODO should we add this?
         #self.batch_first = True
         
+        self.layers = nn.ModuleList()   
         
-        ## -- Layer units questions --
-        # TODO maybe to be in line with DeepReservoir we should do this
-        # if concat layers_unit = tot_units//len(n_hid_layers)
-        # else layers_unit = tot_units
-        # for now we give a list of integer represeting the number of units in each layer
-        # Does something changes if different layers have different number of units? 
-        # Theorically yes
-        ## end
+        self.concat = concat
+
+        if concat:
+            self.layer_units = int(total_units / n_layers) 
+        else:
+            self.layer_units = total_units
+            
+        input_scaling_others = input_scaling
+        connectivity_input_1 = connectivity_input
+        connectivity_input_others = connectivity_inter
         
-        for n_hid in n_hid_layers:
-            self.layers.append(RandomizedOscillatorsNetwork(input_dim, n_hid, dt, gamma, epsilon, 
-                                                    diffusive_gamma, rho, input_scaling, 
-                                                    topology, reservoir_scaler, sparsity, device
-                                                    )
+        deepron_layers = [
+            RandomizedOscillatorsNetwork(
+                n_inp=n_inp, n_hid=self.layer_units + total_units % n_layers,
+                                    input_scaling=input_scaling,
+                                    dt=dt,
+                                    gamma=gamma,
+                                    epsilon=epsilon,
+                                    #connectivity_input=connectivity_input_1,
+                                    #connectivity_recurrent=connectivity_recurrent,
             )
-            # next size of hidden layer
-            input_dim = n_hid 
-    
+        ]
+            
+        last_h_size = self.layer_units + total_units % n_layers
+        
+        for _ in range(n_layers - 1):
+            deepron_layers.append(
+                RandomizedOscillatorsNetwork(
+                    n_inp=last_h_size, n_hid=self.layer_units,
+                    input_scaling=input_scaling_others,
+                    dt=dt,
+                    gamma=gamma,
+                    epsilon=epsilon,
+                    #connectivity_input=connectivity_input_others,
+                    #connectivity_recurrent=connectivity_recurrent,
+                )
+            )
+            last_h_size = self.layer_units
+        self.ron_reservoir = nn.ModuleList(deepron_layers)
+        
     
     def forward(self, hy: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         """Forward pass on the layers of the DeepRON a given input time-series.
@@ -254,8 +273,8 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
         # list to store the hidden states of each layer
         states = []
         
-        for layer in self.layers:
-            hy, last_state = layer(hy)
+        for _, ron_layer in enumerate(self.ron_reservoir):
+            [hy, last_state] = ron_layer(hy)
             states.append(hy)
             layer_states.append(last_state[0])
         
@@ -266,15 +285,7 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
             # if not concat, return only the last layer
             hy = states[-1]
             
-        # TODO: Debug to check if the shapes are correct
-        # with a 2 layer model we should get if concat is True
-        # torch.Size([1, 100, 200])
-        # else torch.Size([1, 100, 100])
-        print("Shape of the output", hy.shape)
-        print("Shape of layer states", [state.shape for state in states])
-        print("Shape of the last state of each layer", [state.shape for state in layer_states])
-        print("Shape of the last state of the last layer", layer_states[-1].shape)
+       # Choose if return all_states from all layers for the  
        
-        # TODO should we return as list 
         return hy, layer_states
         

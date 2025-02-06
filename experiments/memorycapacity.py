@@ -7,13 +7,14 @@ import warnings
 import wandb
 import matplotlib.pyplot as plt
 import plotly.tools as tls
+import cProfile
+import io
+import pstats
 import logging
+from acds.archetypes.utils import count_parameters
 from collections import defaultdict
-
-
-
 # import plotly
-import plotly.express as px
+#import plotly.express as px
 
 from sklearn import preprocessing
 from sklearn.linear_model import LogisticRegression, Ridge
@@ -46,14 +47,13 @@ parser.add_argument("--epsilon_range", type=float, default=1)
 parser.add_argument("--rho", type=float, default=0.99)
 parser.add_argument("--inp_scaling", type=float, default=1)
 parser.add_argument("--leaky", type=float, default=1.0, help="ESN spectral radius")
-parser.add_argument("--n_hid_layers", type=str, default="256, 256", help="hidden size of recurrent net")
 parser.add_argument("--n_layers", type=int, default=1, help="Number of layers of ESN")
 parser.add_argument(
     "--sparsity", type=float, default=0.0, help="Sparsity of the reservoir"
 )
 
 parser.add_argument("--diffusive_gamma", type=float, default=0.0, help="diffusive term")
-parser.add_argument("--topology", type=str, default="full", choices=["full", "antisymmetric"], help="Topology of the hidden-to-hidden matrix")
+parser.add_argument("--topology", type=str, default="full", choices=["full", "antisymmetric", "orthogonal"], help="Topology of the hidden-to-hidden matrix")
 parser.add_argument("--use_test", action="store_true")
 parser.add_argument("--trials", type=int, default=1)
 
@@ -61,17 +61,15 @@ parser.add_argument("--resultsuffix", type=str, default="")
 
 args = parser.parse_args()
 
-# make sure that n_hid_layers is a list of integers
-args.n_hid_layers = [int(x) for x in args.n_hid_layers.split(",")]
-
 # --- Wandb logging ---
+# disable local logging
 if args.wandb == True:
     wandb.init(project="deep-ron-thesis",
             config={"architecture": "DeepRON" if args.deepron else "RON" if args.ron else "ESN",
                     "trials": args.trials, 
                     "n_hid": args.n_hid,
                     "delay": args.delay,
-                    #"num_layers": len(args.n_hid_layers),
+                    "n_layers": args.n_layers,
                     "gamma": args.gamma,
                     "diffusive_gamma": args.diffusive_gamma,
                     "epsilon": args.epsilon,
@@ -81,8 +79,11 @@ if args.wandb == True:
                     "sparsity": args.sparsity,
                     "topology": args.topology,
                     "use_test": args.use_test,
+                    "epsilon_range": args.epsilon_range,
+                    "gamma_range": args.gamma_range,
                     "resultsuffix": args.resultsuffix
                     }
+
             )
 else:
     warnings.warn("Wandb is not enabled. No logging will be done.")
@@ -94,6 +95,7 @@ device = (
     if torch.cuda.is_available() and not args.cpu
     else torch.device("cpu")
 )
+print("Using device ", device)
 
 if args.resultroot is None:
     warnings.warn("No resultroot provided. Using current location as default.")
@@ -113,7 +115,7 @@ def criterion_eval(output, target):
     return square_correlation(output, target)
 
 
-def plot_statistics(results_dict):
+def plot_statistics(results_dict, test_dict, model):
     """Use the dictionary with results for each trial and plot the mean, std and variance over trials
 
     Args:
@@ -123,44 +125,29 @@ def plot_statistics(results_dict):
     results_dict_sum = {k: sum(v) for k, v in results_dict.items()}
     # Divide by the trials to get the mean of the memory values
     results_dict_mean = {k: v / args.trials for k, v in results_dict_sum.items()}
-    
+    results_dict_mean_test = {k: sum(v) / args.trials for k, v in test_dict.items()}
     # get the variance and std between each trial
     results_dict_var = np.var(list(results_dict_mean.values()))
-    results_dict_std = np.std(list(results_dict_mean.values()))
     
     # plot the mean, std and variance
     plt.figure(figsize=(12, 6))
     plt.plot(list(results_dict_mean.keys()), list(results_dict_mean.values()), label="Mean")
-    plt.fill_between(list(results_dict_mean.keys()), list(results_dict_mean.values()) - results_dict_std, list(results_dict_mean.values()) + results_dict_std, alpha=0.3, label="Std")
+    plt.plot(list(results_dict_mean_test.keys()), list(results_dict_mean_test.values()), label="Mean Test")
     plt.fill_between(list(results_dict_mean.keys()), list(results_dict_mean.values()) - results_dict_var, list(results_dict_mean.values()) + results_dict_var, alpha=0.3, label="Var")
     plt.grid(True, which="both", linestyle="--")
     plt.xlabel("Delay")
     plt.ylabel("Memory Capacity")
-    plt.title("Memory Capacity over delay steps")
+    # add the model name to the title
+    plt.title(f"Memory Capacity over delay steps for {model.__class__.__name__}{args.n_layers} layers")
+    # add total of result dict and test dict to the plot as values
+    plt.text(
+    0.5, 1.05,
+    f"Total memory: {sum(results_dict_mean.values()):.2f}, Total test memory: {sum(results_dict_mean_test.values()):.2f}",
+    ha='center', va='bottom', transform=plt.gca().transAxes, fontsize=12
+    )
     plt.legend()
-
-
+    
     return plt
- 
-@torch.no_grad()
-def test(dataset, target, classifier, scaler):
-    dataset = dataset.reshape(1, -1, 1).to(device)
-    target = target.reshape(-1, 1).numpy()
-    
-    activations = model(dataset)[0].cpu().numpy()
-    activations = activations[:, washout:]
-    activations = activations.reshape(-1, args.n_hid)
-    activations = scaler.transform(activations)
-    prediction = classifier.predict(activations)
-    
-    # wandb logs
-    if args.wandb:
-        wandb.log({"prediction": prediction, "target": target})
-    
-    error = criterion_eval(torch.tensor(prediction), torch.tensor(target))
-    #nrmse_error = nrmse(prediction, target)
-    
-    return error
  
     
 gamma = (args.gamma - args.gamma_range / 2.0, args.gamma + args.gamma_range / 2.0)
@@ -174,6 +161,7 @@ train_nrmse, valid_nrmse, test_nrmse = 0.0, 0.0, 0.0
 
 train_memory_dict, valid_memory_dict, test_memory_dict = defaultdict(list), defaultdict(list), defaultdict(list)
 train_nrmse_list, valid_nrmse_list, test_nrmse_list = [], [], []
+var_train, var_test = [], []
 
 for t in range(args.trials):
     if args.esn:
@@ -181,10 +169,15 @@ for t in range(args.trials):
             n_inp,
             tot_units=args.n_hid,
             n_layers=args.n_layers,
+            concat=True,
             spectral_radius=args.rho,
+            inter_scaling=args.inp_scaling,
             input_scaling=args.inp_scaling,
-            connectivity_recurrent=int((1 - args.sparsity) * args.n_hid),
-            connectivity_input=args.n_hid,
+            #inter_scaling=args.inp_scaling,
+            # Since we are using tot unit and dividing them by the number of layers we need to adjust the connectivity
+            connectivity_recurrent=int((1 - args.sparsity) * args.n_hid/args.n_layers),
+            connectivity_input=int(args.n_hid/args.n_layers),
+            connectivity_inter=int(args.n_hid/args.n_layers),
             leaky=args.leaky,
         ).to(device)
     elif args.ron:
@@ -198,62 +191,106 @@ for t in range(args.trials):
             args.rho,
             args.inp_scaling,
             args.topology,
-            args.n_hid_layers,
             device=device,
         ).to(device)
     elif args.deepron:
         model = DeepRandomizedOscillatorsNetwork(
             n_inp,
             args.n_hid,
-            args.n_hid_layers,
             args.dt,
             gamma,
             epsilon,
+            args.n_layers,
             args.diffusive_gamma,
             args.rho,
             args.inp_scaling,
             device=device,
+            concat=True,
         ).to(device)
     else:
         raise ValueError("Wrong model choice.")
 
-    for i in range(delay):
-        (
-            (train_dataset, train_target),
-            (test_dataset, test_target) 
-            # since we iterate from 0 we need to add 1 to the i in the cycle
-        ) = get_memory_capacity(delay=i+1, test_size=1000)
+    # Print model with number of units in each layer
+    print(model)
+    # Print number of parameters
+    # as in the paper this is R(R+U+1) the one is for the bias for a layer l, so
+    # one layer with 10 has 101, then we sum across
+    print(f"Number of parameters: {sum(p.numel() for p in model.parameters())}")
+           
+    # count biases and weights for each layer
+    print(f"Number of parameters per layer: {count_parameters(model)}")
+    
+    total_train_memory, total_test_memory = 0, 0 
+        
+    num_steps = 6000
+    train_steps = 5000
+    test_steps = 1000
+    
+    u = np.random.uniform(-0.8, 0.8, size=(num_steps+delay, 1))
+    u = u.astype(np.float32)
 
-        # apply washout to the targets
-        train_target = train_target[washout:]
-        #valid_target = valid_target[washout:]
-        test_target = test_target[washout:]
+    states_u = model(torch.tensor(u[:-delay]).to(device).reshape(1, -1, 1))[0].cpu().numpy()
+    states_u = states_u.reshape(-1, args.n_hid)
+    
+    train_states = states_u[:train_steps, :]
+    test_states = states_u[train_steps:, :]
+    
+    for i in tqdm(range(1, delay + 1)):
+             
+        states_i = states_u[i:num_steps, :]
+        target = u[: num_steps - i, 0]
         
-        dataset = train_dataset.reshape(1, -1, 1).to(device)
-        target = train_target.reshape(-1, 1).numpy()
-        activations = model(dataset)[0].cpu().numpy()
-        activations = activations[:, washout:]
-        activations = activations.reshape(-1, args.n_hid)
-        scaler = preprocessing.StandardScaler().fit(activations)
-        activations = scaler.transform(activations)
-        classifier = Ridge(max_iter=1000).fit(activations, target)
+        split_idx = train_steps - i
         
-        train_memory = test(train_dataset, train_target, classifier, scaler)
-        test_memory = (
-            test(test_dataset, test_target, classifier, scaler) if args.use_test else 0.0
-        )
+        if split_idx <= 0 or (split_idx + test_steps) > states_i.shape[0]:
+            continue
         
-        # check shapes or type coming out of model
+        y_train, y_test = target[:split_idx], target[split_idx:split_idx + test_steps]
+        X_train, X_test = states_i[:split_idx, :], states_i[split_idx:split_idx + test_steps, :]
+        
+        
+        # add washout
+        y_train, y_test = y_train[washout:], y_test[washout:]
+        X_train, X_test = X_train[washout:], X_test[washout:] 
+        
+        # Normalize the data
+        scaler = preprocessing.StandardScaler().fit(X_train)
+        X_train = scaler.transform(X_train)
+        X_test = scaler.transform(X_test)
+        
+        
+        # Train a classifier
+        classifier = Ridge(max_iter=1000, alpha=1e-6)
+        classifier.fit(X_train, y_train)
+        
+        y_hat = classifier.predict(X_train)
+        y_hat_test = classifier.predict(X_test)
+        
+        train_memory = square_correlation(y_hat, y_train)
+        test_memory = square_correlation(y_hat_test, y_test)
+
         print("Train memory: ", train_memory, "Test memory: ", test_memory)
-        
+        total_train_memory += train_memory
+        total_test_memory += test_memory
         train_memory_dict[i].append(train_memory)
         test_memory_dict[i].append(test_memory)
         
         print(
             f"Trial {t}, delay {i+1}/{delay}, "  
-            f"train memory: {round(train_memory, 2)} "
-            f"test memory: {round(test_memory, 2)}"
+            f"train memory: {round(train_memory, 2)}, "
+            f"test memory: {round(test_memory, 2)}, "
+            # print current total memory
+            "\n",
+            f"total train memory: {round(total_train_memory, 2)}, "
+            f"total test memory: {round(total_test_memory, 2)}",
+            f"\n"
         )
+        # print final total memory for this trial
+        #reset total_test_memory
+    var_test.append(total_test_memory)
+    var_train.append(total_train_memory)
+    total_test_memory = 0
+    total_train_memory = 0
     
 if args.ron:
     f = open(os.path.join(args.resultroot, f"MemoryCapacity_log_RON_{args.topology}{args.resultsuffix}.txt"), "a")
@@ -268,18 +305,16 @@ else:
 train_memory = sum([sum(v) for k, v in train_memory_dict.items()]) / args.trials
 test_memory = sum([sum(v) for k, v in test_memory_dict.items()]) / args.trials
 
-plt = plot_statistics(train_memory_dict)
-plt_test = plot_statistics(test_memory_dict)
+plt = plot_statistics(train_memory_dict, test_memory_dict, model=model)
+plt.savefig(os.path.join(args.resultroot, f"MemoryCapacity_plot{args.resultsuffix}{args.delay}{model.__class__.__name__}{args.n_layers}.png"))
 plotly_fig = tls.mpl_to_plotly(plt.gcf())
-plotly_fig_test = tls.mpl_to_plotly(plt_test.gcf())
 
 if args.wandb:
     # save the plot as a wandb artifact
     wandb.log({"Memory Capacity": plotly_fig})
-    wandb.log({"Memory Capacity Test": plotly_fig_test})
-    plt.savefig(os.path.join(args.resultroot, f"MemoryCapacity_plot{args.resultsuffix}{args.delay}.png"))
-    plt_test.savefig(os.path.join(args.resultroot, f"MemoryCapacity_test_plot{args.resultsuffix}{args.delay}.png"))
+    plt.savefig(os.path.join(args.resultroot, f"MemoryCapacity_plot{args.resultsuffix}{args.delay}{model.__class__.__name__}{args.n_layers}.png"))
     wandb.log({"train_memory": train_memory, "test_memory": test_memory})
+    
     # TODO plotly broken
     #for i in range(args.trials):
         #wandb.Image(train_memory_list[::delay], caption="Debug MC plot")
@@ -289,6 +324,7 @@ for k, v in vars(args).items():
     ar += f"{str(k)}: {str(v)}, " 
 ar += (
     f"Memory capacity for train: {train_memory} for test: {test_memory}"
+    f"variance train: {np.var(var_train)}, variance test: {np.var(var_test)}"
 )
 f.write(ar + "\n")
 f.close()

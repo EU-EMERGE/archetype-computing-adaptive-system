@@ -189,6 +189,7 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
         diffusive_gamma=0.0,
         rho: float = 0.99,
         input_scaling: float = 1.0,
+        inter_scaling: float = 1.0,
         topology: Literal[
             "full", "lower", "orthogonal", "band", "ring", "toeplitz", "antisymmetric"
         ] = "full",
@@ -198,7 +199,6 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
         concat: bool = True,
         connectivity_input: int = 10,
         connectivity_inter: int = 10,
-        connectivity_recurrent: int = 10,
     ):
         """Initialize the DeepRON model.
 
@@ -224,7 +224,7 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
         else:
             self.layer_units = total_units
             
-        input_scaling_others = input_scaling
+        input_scaling_others = inter_scaling
         connectivity_input_1 = connectivity_input
         connectivity_input_others = connectivity_inter
         
@@ -232,11 +232,12 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
             RandomizedOscillatorsNetwork(
                 n_inp=n_inp, n_hid=self.layer_units + total_units % n_layers,
                                     input_scaling=input_scaling,
+                                    inter_scaling=input_scaling_others,
                                     dt=dt,
                                     gamma=gamma,
                                     epsilon=epsilon,
-                                    #connectivity_input=connectivity_input_1,
-                                    #connectivity_recurrent=connectivity_recurrent,
+                                    connectivity_input=connectivity_input_1,
+                                    connectivity_recurrent=connectivity_input_others,
             )
         ]
             

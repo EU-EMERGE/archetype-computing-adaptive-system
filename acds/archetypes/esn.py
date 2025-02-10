@@ -108,10 +108,10 @@ class ReservoirCell(torch.nn.Module):
             torch.Tensor: hidden state tensor shaped as (batch, time, state_dim).
             torch.Tensor: hidden state tensor shaped as (batch, time, state_dim).
         """
-        input_part = torch.mm(xt, self.kernel)
-        state_part = torch.mm(h_prev, self.recurrent_kernel)
+        input_part = torch.mm(xt, self.kernel.to(dtype=xt.dtype))
+        state_part = torch.mm(h_prev.to(dtype=xt.dtype), self.recurrent_kernel.to(dtype=(xt.dtype)))
 
-        output = torch.tanh(input_part + self.bias + state_part)
+        output = torch.tanh(input_part + self.bias.to(dtype=xt.dtype) + state_part.to(dtype=xt.dtype))
         leaky_output = h_prev * (1 - self.leaky) + output * self.leaky
         return leaky_output, leaky_output
 
@@ -216,6 +216,7 @@ class DeepReservoir(torch.nn.Module):
         connectivity_recurrent: int = 10,
         connectivity_input: int = 10,
         connectivity_inter: int = 10,
+        all: bool = False,
     ):
         """Initializes the DeepReservoir.
 
@@ -246,7 +247,6 @@ class DeepReservoir(torch.nn.Module):
         self.tot_units = tot_units
         self.concat = concat
         self.batch_first = True  # DeepReservoir only supports batch_first
-
         # in case in which all the reservoir layers are concatenated, each level
         # contains units/layers neurons. This is done to keep the number of
         # state variables projected to the next layer fixed,
@@ -309,9 +309,12 @@ class DeepReservoir(torch.nn.Module):
             [X, h_last] = res_layer(X)
             states.append(X)
             states_last.append(h_last)
-
+        
+        states_uncat = states
+        
         if self.concat:
             states = torch.cat(states, dim=2)
         else:
             states = states[-1]
-        return states, states_last
+        
+        return states, states_last, states_uncat

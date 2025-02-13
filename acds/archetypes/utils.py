@@ -66,7 +66,7 @@ def sparse_tensor_init(M: int, N: int, C: int = 1) -> torch.FloatTensor:
             indices[k, 0] = i
             indices[k, 1] = idx[j]
             k = k + 1
-    values = 2 * (2 * np.random.rand(M * C).astype("f") - 1)
+    values = (2 * np.random.rand(M * C).astype("f") - 1)
     values = torch.from_numpy(values)
     return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
 
@@ -95,7 +95,7 @@ def sparse_recurrent_tensor_init(M: int, C: int = 1) -> torch.FloatTensor:
             indices[k, 0] = idx[j]
             indices[k, 1] = i
             k = k + 1
-    values = 2 * (2 * np.random.rand(M * C).astype("f") - 1)
+    values = (2 * np.random.rand(M * C).astype("f") - 1)
     values = torch.from_numpy(values)
     return torch.sparse_coo_tensor(indices.T, values, dense_shape).to_dense().float()
 

@@ -24,8 +24,6 @@ from acds.archetypes import (
     RandomizedOscillatorsNetwork,
     DeepRandomizedOscillatorsNetwork
 )
-# Import memory capacity
-from acds.benchmarks import get_memory_capacity
 
 parser = argparse.ArgumentParser(description="training parameters")
 
@@ -123,17 +121,40 @@ def plot_statistics(results_dict, test_dict, model):
     """
     # Sum for each trial the memory values of each step
     results_dict_sum = {k: sum(v) for k, v in results_dict.items()}
+    
     # Divide by the trials to get the mean of the memory values
     results_dict_mean = {k: v / args.trials for k, v in results_dict_sum.items()}
     results_dict_mean_test = {k: sum(v) / args.trials for k, v in test_dict.items()}
-    # get the variance and std between each trial
-    results_dict_var = np.var(list(results_dict_mean.values()))
+   
+    # for each step we want the variance, staring with dividing the steps in result_dict for trials so first delay steps are for trial 1 and so on
+    # then we want the variance between the step across trials
+
+    variance_between_steps = {k: np.var(v) for k, v in results_dict.items()}
+    
+    variance_between_steps_test = {k: np.var(v) for k, v in test_dict.items()}
     
     # plot the mean, std and variance
     plt.figure(figsize=(12, 6))
     plt.plot(list(results_dict_mean.keys()), list(results_dict_mean.values()), label="Mean")
     plt.plot(list(results_dict_mean_test.keys()), list(results_dict_mean_test.values()), label="Mean Test")
-    plt.fill_between(list(results_dict_mean.keys()), list(results_dict_mean.values()) - results_dict_var, list(results_dict_mean.values()) + results_dict_var, alpha=0.3, label="Var")
+    
+    # plot the variance for each step across trials of variance_between_steps
+    plt.fill_between(
+        list(variance_between_steps.keys()),
+        [results_dict_mean[k] - np.sqrt(variance_between_steps[k]) for k in variance_between_steps.keys()],
+        [results_dict_mean[k] + np.sqrt(variance_between_steps[k]) for k in variance_between_steps.keys()],
+        alpha=0.3,
+        label="Variance",
+    )
+    
+    plt.fill_between(
+        list(variance_between_steps_test.keys()),
+        [results_dict_mean_test[k] - np.sqrt(variance_between_steps_test[k]) for k in variance_between_steps_test.keys()],
+        [results_dict_mean_test[k] + np.sqrt(variance_between_steps_test[k]) for k in variance_between_steps_test.keys()],
+        alpha=0.3,
+        label="Variance Test")
+    
+    
     plt.grid(True, which="both", linestyle="--")
     plt.xlabel("Delay")
     plt.ylabel("Memory Capacity")
@@ -204,6 +225,9 @@ for t in range(args.trials):
             args.diffusive_gamma,
             args.rho,
             args.inp_scaling,
+            # This is not used in ron, to scale internal recurrent use reservoir scalre
+            #inter_scaling=0.1,
+            reservoir_scaler=args.inp_scaling,
             device=device,
             concat=True,
         ).to(device)
@@ -220,10 +244,11 @@ for t in range(args.trials):
     # count biases and weights for each layer
     print(f"Number of parameters per layer: {count_parameters(model)}")
     
-    total_train_memory, total_test_memory = 0, 0 
+    total_train_memory, total_test_memory, total_val_memory = 0, 0, 0 
         
     num_steps = 6000
-    train_steps = 5000
+    train_steps = 4000
+    valid_step = 1000
     test_steps = 1000
     
     u = np.random.uniform(-0.8, 0.8, size=(num_steps+delay, 1))
@@ -232,32 +257,39 @@ for t in range(args.trials):
     states_u = model(torch.tensor(u[:-delay]).to(device).reshape(1, -1, 1))[0].cpu().numpy()
     states_u = states_u.reshape(-1, args.n_hid)
     
-    train_states = states_u[:train_steps, :]
-    test_states = states_u[train_steps:, :]
     
     for i in tqdm(range(1, delay + 1)):
              
         states_i = states_u[i:num_steps, :]
         target = u[: num_steps - i, 0]
+            
+        split_idx_train = train_steps - i
+        split_idx_valid = split_idx_train + valid_step
+        split_idx_test = split_idx_valid + test_steps
         
-        split_idx = train_steps - i
         
-        if split_idx <= 0 or (split_idx + test_steps) > states_i.shape[0]:
-            continue
+        #y_train, y_test = target[:split_idx], target[split_idx:split_idx + test_steps]
+        #X_train, X_test = states_i[:split_idx, :], states_i[split_idx:split_idx + test_steps, :]
+       
+       # Splits
+        y_train, y_valid, y_test = (target[:split_idx_train], 
+                                   target[split_idx_train:split_idx_valid], 
+                                   target[split_idx_valid:split_idx_test])
         
-        y_train, y_test = target[:split_idx], target[split_idx:split_idx + test_steps]
-        X_train, X_test = states_i[:split_idx, :], states_i[split_idx:split_idx + test_steps, :]
-        
+        X_train, X_valid, X_test = (states_i[:split_idx_train, :],
+                                    states_i[split_idx_train:split_idx_valid, :],
+                                    states_i[split_idx_valid:split_idx_test, :])
         
         # add washout
-        y_train, y_test = y_train[washout:], y_test[washout:]
-        X_train, X_test = X_train[washout:], X_test[washout:] 
+        y_train, y_test, y_valid = y_train[washout:], y_test[washout:], y_valid[washout:]
+        X_train, X_test, X_valid = X_train[washout:], X_test[washout:], X_valid[washout:] 
+        
         
         # Normalize the data
         scaler = preprocessing.StandardScaler().fit(X_train)
         X_train = scaler.transform(X_train)
         X_test = scaler.transform(X_test)
-        
+        X_valid = scaler.transform(X_valid)
         
         # Train a classifier
         classifier = Ridge(max_iter=1000, alpha=1e-6)
@@ -265,13 +297,16 @@ for t in range(args.trials):
         
         y_hat = classifier.predict(X_train)
         y_hat_test = classifier.predict(X_test)
+        y_hat_valid = classifier.predict(X_valid)
         
         train_memory = square_correlation(y_hat, y_train)
         test_memory = square_correlation(y_hat_test, y_test)
-
+        valid_memory = square_correlation(y_hat_valid, y_valid)
+        
         print("Train memory: ", train_memory, "Test memory: ", test_memory)
         total_train_memory += train_memory
         total_test_memory += test_memory
+        total_val_memory += valid_memory
         train_memory_dict[i].append(train_memory)
         test_memory_dict[i].append(test_memory)
         
@@ -283,12 +318,13 @@ for t in range(args.trials):
             "\n",
             f"total train memory: {round(total_train_memory, 2)}, "
             f"total test memory: {round(total_test_memory, 2)}",
+            f"total valid memory: {round(total_val_memory, 2)}",
             f"\n"
         )
-        # print final total memory for this trial
-        #reset total_test_memory
+    # these is the variance between the trials
     var_test.append(total_test_memory)
     var_train.append(total_train_memory)
+    #reset total_test_memory
     total_test_memory = 0
     total_train_memory = 0
     

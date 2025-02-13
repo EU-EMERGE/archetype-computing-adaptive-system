@@ -120,9 +120,13 @@ class RandomizedOscillatorsNetwork(nn.Module):
             hy (torch.Tensor): Current hidden state.
             hz (torch.Tensor): Current hidden state derivative.
         """
+        # convert to same type of x
+        hz = hz.to(x.dtype)
+        hy = hy.to(x.dtype)
+        
         hz = hz + self.dt * (
             torch.tanh(
-                torch.matmul(x, self.x2h) + torch.matmul(hy, self.h2h - self.diffusive_matrix) + self.bias
+                torch.matmul(x, self.x2h.to(dtype=x.dtype)) + torch.matmul(hy, self.h2h.to(dtype=x.dtype) - self.diffusive_matrix.to(dtype=x.dtype)) + self.bias.to(dtype=x.dtype)
             )
             - self.gamma * hy
             - self.epsilon * hz
@@ -197,6 +201,7 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
         sparsity=0.0,
         device="cuda",
         concat: bool = True,
+        # TODO implement sparse connectivity later...
         connectivity_input: int = 10,
         connectivity_inter: int = 10,
     ):
@@ -210,8 +215,10 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
             concat: (bool): If True, the output of each layer is concatenated. If False, only the output of the last layer is returned.
         """
         super().__init__()
+        self.inter_scaling = inter_scaling
         self.n_layers = n_layers
         self.total_units = total_units
+        self.reservoir_scaler = reservoir_scaler
         # if True, then the input and output tensors are provided as (batch, seq, feature)
         #self.batch_first = True
         
@@ -231,13 +238,14 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
         deepron_layers = [
             RandomizedOscillatorsNetwork(
                 n_inp=n_inp, n_hid=self.layer_units + total_units % n_layers,
-                                    input_scaling=input_scaling,
-                                    inter_scaling=input_scaling_others,
+                                    input_scaling=input_scaling_others,
                                     dt=dt,
                                     gamma=gamma,
                                     epsilon=epsilon,
-                                    connectivity_input=connectivity_input_1,
-                                    connectivity_recurrent=connectivity_input_others,
+                                    reservoir_scaler=self.reservoir_scaler
+                                    #TODO still sparse connectivity to implement
+                                    #connectivity_input=connectivity_input_1,
+                                    #connectivity_recurrent=connectivity_input_others,
             )
         ]
             
@@ -279,6 +287,8 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
             states.append(hy)
             layer_states.append(last_state[0])
         
+        states_uncat = states
+        
         if self.concat:
             # check what dim we need to concat
             hy = torch.cat(states, dim=2)
@@ -288,5 +298,5 @@ class DeepRandomizedOscillatorsNetwork(nn.Module):
             
        # Choose if return all_states from all layers for the  
        
-        return hy, layer_states
+        return hy, layer_states, states_uncat
         

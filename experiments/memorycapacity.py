@@ -25,6 +25,11 @@ from acds.archetypes import (
     DeepRandomizedOscillatorsNetwork
 )
 
+# set a seed for all randomness sources
+seed = 42
+torch.manual_seed(seed)
+np.random.seed(seed)
+
 parser = argparse.ArgumentParser(description="training parameters")
 
 parser.add_argument("--resultroot", type=str)
@@ -203,32 +208,36 @@ for t in range(args.trials):
         ).to(device)
     elif args.ron:
         model = RandomizedOscillatorsNetwork(
-            n_inp,
-            args.n_hid,
-            args.dt,
-            gamma, 
-            epsilon,
-            args.diffusive_gamma,
-            args.rho,
-            args.inp_scaling,
-            args.topology,
+            n_inp=1,
+            total_units=args.n_hid,
+            dt=args.dt,
+            gamma=gamma, 
+            epsilon=epsilon,
+            diffusive_gamma=args.diffusive_gamma,
+            rho=args.rho,
+            input_scaling=args.inp_scaling,
+            reservoir_scaler=args.inp_scaling,
+            topology=args.topology,
             device=device,
         ).to(device)
     elif args.deepron:
         model = DeepRandomizedOscillatorsNetwork(
-            n_inp,
-            args.n_hid,
-            args.dt,
-            gamma,
-            epsilon,
-            args.n_layers,
-            args.diffusive_gamma,
-            args.rho,
-            args.inp_scaling,
+            n_inp=1,
+            total_units=args.n_hid,
+            dt=args.dt,
+            gamma=gamma,
+            epsilon=epsilon,
+            n_layers=args.n_layers,
+            diffusive_gamma=args.diffusive_gamma,
+            rho=args.rho,
+            input_scaling=args.inp_scaling,
+            inter_scaling=args.inp_scaling,
             # This is not used in ron, to scale internal recurrent use reservoir scalre
             #inter_scaling=0.1,
             reservoir_scaler=args.inp_scaling,
             device=device,
+            connectivity_input=int(args.n_hid / args.n_layers),
+            connectivity_inter=int(args.n_hid / args.n_layers),
             concat=True,
         ).to(device)
     else:
@@ -340,6 +349,7 @@ else:
 # sum train, valid and test memory dict lists and divide by the number of trials
 train_memory = sum([sum(v) for k, v in train_memory_dict.items()]) / args.trials
 test_memory = sum([sum(v) for k, v in test_memory_dict.items()]) / args.trials
+valid_memory = sum([sum(v) for k, v in valid_memory_dict.items()]) / args.trials
 
 plt = plot_statistics(train_memory_dict, test_memory_dict, model=model)
 plt.savefig(os.path.join(args.resultroot, f"MemoryCapacity_plot{args.resultsuffix}{args.delay}{model.__class__.__name__}{args.n_layers}.png"))

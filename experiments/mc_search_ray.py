@@ -39,8 +39,8 @@ parser.add_argument("--n_hid", type=int, default=100)
 parser.add_argument("--dt", type=float, default=0.0075)
 parser.add_argument("--gamma", type=float, default=0.5)
 parser.add_argument("--epsilon", type=float, default=1.0)
-parser.add_argument("--gamma_range", type=float, default=0.5)
-parser.add_argument("--epsilon_range", type=float, default=1)
+parser.add_argument("--gamma_range", type=float, default=0)
+parser.add_argument("--epsilon_range", type=float, default=0)
 parser.add_argument("--rho", type=float, default=0.99)
 parser.add_argument("--inp_scaling", type=float, default=1)
 parser.add_argument("--leaky", type=float, default=1.0, help="ESN spectral radius")
@@ -56,20 +56,12 @@ parser.add_argument("--resultsuffix", type=str, default="")
 
 args = parser.parse_args()
 
+os.environ["PYTHONHASHSEED"] = "42"
+np.random.seed(42)
+torch.manual_seed(42)
+torch.use_deterministic_algorithms(True)
+
 # setup gamma, epsilon and their range for optuna then calculate the final values and return as trial suggest
-def gamma_r(trial):
-
-    gamma = trial.suggest_float("gamma", 0.1, 0.5, 2.0, 3)
-    gamma_range = trial.suggest_float("gamma_range", 0.1, 0.5)
-
-    return (gamma - gamma_range / 2.0, gamma + gamma_range / 2.0) 
-
-def epsilon_r(trial):
-    
-    epsilon = trial.suggest_float("epsilon", 0.1, 0.5, 3.0)
-    epsilon_range = trial.suggest_float("epsilon_range", 0.1, 0.5)
-    
-    return (epsilon - epsilon_range / 2.0, epsilon + epsilon_range / 2.0)
 
 def evaluate(output, target):
     return (np.corrcoef(output.flatten(), target.flatten())[0, 1])**2
@@ -80,6 +72,10 @@ def evaluate(output, target):
 
 def train_memory_capacity(config):
     
+    np.random.seed(42)
+    torch.manual_seed(42)
+    torch.use_deterministic_algorithms(True)
+    torch.manual_seed(42) 
     # Initialize model with config parameters
     if args.esn:
         model = DeepReservoir(
@@ -113,8 +109,7 @@ def train_memory_capacity(config):
     
     # Add other model types as needed
     # Generate input signal
-
-    T = 5000  # Total timesteps
+    T = 6000  # Total timesteps
     train_steps = 4000
     valid_steps = 1000
     washout = 100
@@ -170,9 +165,9 @@ def run_hyperparameter_search():
     # Bayesian optimization search 
     
     search_space = {
-        "gamma": tune.uniform(1, 3),
-        "epsilon": tune.uniform(1, 3.0),
-        "dt": tune.uniform(0.5, 1.0),
+        "gamma": tune.uniform(0, 2.5),
+        "epsilon": tune.uniform(0, 2.5),
+        "dt": tune.uniform(0.1, 1.0),
         "rho": tune.uniform(0.99, 0.99),
         "n_layers": tune.uniform(args.n_layers, args.n_layers),
     }
@@ -184,13 +179,13 @@ def run_hyperparameter_search():
         utility_kwargs={"kind": "ucb", "kappa": 2.5, "xi": 0.0}
     )
     
-    bayesopt = ConcurrencyLimiter(bayesopt, max_concurrent=4)
+    bayesopt = ConcurrencyLimiter(bayesopt, max_concurrent=8)
 
     tuner = tune.Tuner(
         train_memory_capacity,
         tune_config=tune.TuneConfig(
             search_alg=bayesopt,
-            num_samples=50,  # Number of trials
+            num_samples=10,  # Number of trials
         ),
         param_space=search_space,
     )
@@ -203,16 +198,13 @@ def run_hyperparameter_search():
 
 if __name__ == "__main__":
     
+    # set seed
+    # use all cpus    
+    ray.init(num_cpus=8)
+    # check how many cpus are being used
+    print(ray.available_resources())
     
-    # Run hyperparameter search if specified
-    if args.cpu:
-        # check how many cpus are available and use them all
-        print("Using all available cpus: ", os.cpu_count())
-        ray.init(num_cpus=os.cpu_count())
-    else:    
-        ray.init(num_cpus=8)
-
     run_hyperparameter_search()
 
-    ray.shutdown()
+    #ray.shutdown()
     

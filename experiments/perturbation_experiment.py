@@ -17,9 +17,17 @@ parser.add_argument('--gamma_range', type=float, default=0.1, help='Gamma range'
 parser.add_argument('--epsilon_range', type=float, default=0.1, help='Epsilon range')
 parser.add_argument('--gamma', type=float, default=1.0, help='Gamma')
 parser.add_argument('--epsilon', type=float, default=1.0, help='Epsilon')
+parser.add_argument('--dt', type=float, default=0.0075, help='Time step')
+parser.add_argument("--topology", type=str, default="full", choices=["full", "antisymmetric", "orthogonal"], help="Topology of the hidden-to-hidden matrix")
 
 args = parser.parse_args()
 RON = args.RON
+
+# add seed
+torch.manual_seed(42)
+np.random.seed(42)
+
+
 
 
 def main():
@@ -33,7 +41,7 @@ def main():
     if RON == False:
     
         model = DeepReservoir(input_size=input_size, tot_units=tot_units,
-                            n_layers=n_layers, concat=True, spectral_radius=0.95, input_scaling=0.1, inter_scaling=0.1, leaky=1, 
+                            n_layers=n_layers, concat=True, spectral_radius=0.9, input_scaling=1, inter_scaling=1, leaky=0.55, 
                             connectivity_recurrent=int(tot_units/n_layers), 
                             connectivity_input=int(tot_units/n_layers),
                             connectivity_inter=int(tot_units/n_layers), all=True).to(dtype=torch.float64)
@@ -45,11 +53,11 @@ def main():
         )
                 
         model = DeepRandomizedOscillatorsNetwork(n_inp=input_size, total_units=tot_units,
-                                            dt=0.02, gamma=gamma, epsilon=epsilon, 
-                                            input_scaling=0.2, inter_scaling=0.2,
+                                            dt=args.dt, gamma=gamma, epsilon=epsilon, 
+                                            input_scaling=1, inter_scaling=1, reservoir_scaler=1,
                                             connectivity_input=int(tot_units/n_layers), 
                                             connectivity_inter=int(tot_units/n_layers),
-                                            rho=0.95, n_layers=n_layers).to(dtype=torch.float64)
+                                            rho=0.99, n_layers=n_layers, topology=args.topology).to(dtype=torch.float64)
                                             
 
     s1 = torch.from_numpy(np.random.randint(0, 10, length)).to(dtype=torch.float64)
@@ -62,6 +70,7 @@ def main():
     
     # 2. Collect states
     with torch.no_grad():
+        
        if RON == False:
             # Deep Reservoir
             _, _, states_un1 = model(s1.to('cpu').reshape(1, length, 10).to(dtype=torch.double))
@@ -88,8 +97,10 @@ def main():
     # Plot distance
     plt.figure(figsize=(12, 6))
     for l in range(n_layers):
-        plt.plot(distances[l], label=f'Layer {l}', alpha=0.3 + 0.03 * l, color = (0, 0, 1 - l/n_layers), linewidth=2)   
-    plt.axvline(x=perturbation_step, color='r', linestyle='--', label='Error introduced at step 100')
+        # start plotting from the 100th step
+        #plt.plot(distances[l][perturbation_step:], label=f'Layer {l}', alpha=0.3 + 0.03 * l, color = (0, 0, 1 - l/n_layers), linewidth=1.5)
+        plt.plot(distances[l], label=f'Layer {l}', alpha=0.3 + 0.03 * l, color = (0, 0, 1 - l/n_layers), linewidth=1.5)   
+    plt.axvline(x=perturbation_step, color='r', linestyle='--', label='Perturbation introduced')
     plt.xlabel('Time step')
     plt.ylabel('Euclidean distance between states')
     plt.title(f'Distance between Reservoir States of s1 and s2 ({n_layers} Layers) of "{model.__class__.__name__}"')
@@ -97,7 +108,7 @@ def main():
     plt.yscale('log')
     plt.grid(True)
     plt.show()
-    plt.savefig('distance_reservoir_states.png')
+    plt.savefig(f'distance_reservoir_states_{model.__class__.__name__}_{args.n_layers}_layers.png')
     
 if __name__ == "__main__":
     main()

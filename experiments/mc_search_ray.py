@@ -76,6 +76,7 @@ def train_memory_capacity(config):
     torch.manual_seed(42)
     torch.use_deterministic_algorithms(True)
     torch.manual_seed(42) 
+    
     # Initialize model with config parameters
     if args.esn:
         model = DeepReservoir(
@@ -92,13 +93,16 @@ def train_memory_capacity(config):
             connectivity_recurrent=int(args.n_hid / config["n_layers"]),
         )
     elif args.deepron:
+        #TODO Calculate the bounded range for gamma and epsilon
+        gamma = (config["gamma"] - config["gamma_range"] / 2.0, config["gamma"] + config["gamma_range"] / 2.0)
+        epsilon = (config["epsilon"] - config["epsilon_range"] / 2.0, config["epsilon"] + config["epsilon_range"] / 2.0)
         model = DeepRandomizedOscillatorsNetwork(
             n_inp=1,
             n_layers=int(config["n_layers"]),
             total_units=args.n_hid,
             dt=config["dt"],
-            gamma=config["gamma"],
-            epsilon=config["epsilon"],
+            gamma=gamma,
+            epsilon=epsilon,
             input_scaling=args.inp_scaling,
             inter_scaling=args.inp_scaling,
             reservoir_scaler=args.inp_scaling,
@@ -150,7 +154,7 @@ def train_memory_capacity(config):
         X_valid = scaler.transform(X_valid)
    
         # Train Ridge regression
-        ridge = Ridge(alpha=1e-6, max_iter=1000)
+        ridge = Ridge(alpha=config["alpha"], max_iter=1000)
         ridge.fit(X_train, y_train)
          
         # Predict and calculate correlation
@@ -165,10 +169,13 @@ def run_hyperparameter_search():
     # Bayesian optimization search 
     
     search_space = {
-        "gamma": tune.uniform(0, 2.5),
-        "epsilon": tune.uniform(0, 2.5),
-        "dt": tune.uniform(0.1, 1.0),
+        "gamma": tune.uniform(1.2, 2),
+        "epsilon": tune.uniform(0.6, 0.9),
+        "dt": tune.uniform(0.3, 0.7),
         "rho": tune.uniform(0.99, 0.99),
+        "alpha": tune.uniform(1e-4, 1e-9),
+        #"gamma_range": tune.uniform(0, 0.3),
+        #"epsilon_range": tune.uniform(0, 0.3),
         "n_layers": tune.uniform(args.n_layers, args.n_layers),
     }
 
@@ -185,7 +192,7 @@ def run_hyperparameter_search():
         train_memory_capacity,
         tune_config=tune.TuneConfig(
             search_alg=bayesopt,
-            num_samples=10,  # Number of trials
+            num_samples=300,  # Number of trials
         ),
         param_space=search_space,
     )
@@ -198,11 +205,22 @@ def run_hyperparameter_search():
 
 if __name__ == "__main__":
     
+
+    # Add weights and biases logging
+    if args.wandb:
+        wandb.init(project="deep-ron-thesis", entity="vincent", config=args, sync_tensorboard=True)
+        wandb.config.update(args)
+        wandb.run.name = f"mc_search_{args.n_layers}_layers_{'esn' if args.esn else 'ron'}"
+        wandb.run.save() 
+        wandb.disabled = True
+    
     # set seed
     # use all cpus    
     ray.init(num_cpus=8)
     # check how many cpus are being used
     print(ray.available_resources())
+    
+    # log with wandb
     
     run_hyperparameter_search()
 

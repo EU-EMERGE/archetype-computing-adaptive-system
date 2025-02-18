@@ -156,7 +156,8 @@ def get_hidden_topology(
     assert sparsity >= 0 and sparsity < 1, "Sparsity must be in [0,1)"
 
     if topology == "full":
-        h2h = 2 * (2 * torch.rand(n_hid, n_hid) - 1)
+        # TODO 
+        h2h = (2 * torch.rand(n_hid, n_hid) - 1)
     elif topology == "lower":
         h2h = torch.tril(2 * torch.rand(n_hid, n_hid) - 1)
         if sparsity > 0:

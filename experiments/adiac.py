@@ -11,6 +11,7 @@ from tqdm import tqdm
 from acds.archetypes import (
     DeepReservoir,
     RandomizedOscillatorsNetwork,
+    DeepRandomizedOscillatorsNetwork,
     PhysicallyImplementableRandomizedOscillatorsNetwork,
     MultistablePhysicallyImplementableRandomizedOscillatorsNetwork,
 )
@@ -51,6 +52,7 @@ parser.add_argument(
 parser.add_argument("--cpu", action="store_true")
 parser.add_argument("--esn", action="store_true")
 parser.add_argument("--ron", action="store_true")
+parser.add_argument('--deepron', action="store_true")
 parser.add_argument('--pron', action="store_true")
 parser.add_argument('--mspron', action="store_true")
 
@@ -62,6 +64,7 @@ parser.add_argument("--diffusive_gamma", type=float, default=0.0, help="diffusiv
 parser.add_argument("--inp_scaling", type=float, default=1.0, help="ESN input scaling")
 parser.add_argument("--rho", type=float, default=0.99, help="ESN spectral radius")
 parser.add_argument("--leaky", type=float, default=1.0, help="ESN spectral radius")
+parser.add_argument("--n_layers", type=int, default=1, help="Number of layers")
 parser.add_argument("--use_test", action="store_true")
 parser.add_argument(
     "--trials", type=int, default=1, help="How many times to run the experiment"
@@ -142,11 +145,13 @@ for i in range(args.trials):
         model = DeepReservoir(
             n_inp,
             tot_units=args.n_hid,
+            n_layers=args.n_layers,
+            concat=True,
             spectral_radius=args.rho,
             input_scaling=args.inp_scaling,
-            connectivity_recurrent=int((1 - args.sparsity) * args.n_hid),
-            connectivity_input=args.n_hid,
-            leaky=args.leaky,
+            connectivity_recurrent=int((1 - args.sparsity) * args.n_hid//args.n_layers),
+            connectivity_input=int((1 - args.sparsity) * n_inp),
+            leaky=args.leaky, 
         ).to(device)
     elif args.ron:
         model = RandomizedOscillatorsNetwork(
@@ -162,6 +167,25 @@ for i in range(args.trials):
             sparsity=args.sparsity,
             reservoir_scaler=args.reservoir_scaler,
             device=device,
+        ).to(device)
+    elif args.deepron:
+        model = DeepRandomizedOscillatorsNetwork(
+            n_inp=1,
+            total_units=args.n_hid,
+            dt=args.dt,
+            gamma=gamma,
+            epsilon=epsilon,
+            n_layers=args.n_layers,
+            diffusive_gamma=args.diffusive_gamma,
+            rho=args.rho,
+            input_scaling=args.inp_scaling,
+            inter_scaling=args.inp_scaling,
+            # This is not used in ron, to scale internal recurrent use reservoir scalre
+            reservoir_scaler=args.inp_scaling,
+            device=device,
+            connectivity_input=int((1-args.sparsity * n_inp)),
+            connectivity_inter=int(args.n_hid / args.n_layers),
+            concat=True,
         ).to(device)
     elif args.pron:
         model = PhysicallyImplementableRandomizedOscillatorsNetwork(
@@ -208,6 +232,8 @@ for i in range(args.trials):
 
 if args.ron:
     f = open(os.path.join(args.resultroot, f"Adiac_log_RON_{args.topology}{args.resultsuffix}.txt"), "a")
+elif args.deepron:
+    f = open(os.path.join(args.resultroot, f"Adiac_log_DeepRON_{args.topology}{args.resultsuffix}.txt"), "a")
 elif args.pron:
     f = open(os.path.join(args.resultroot, f"Adiac_log_PRON{args.resultsuffix}.txt"), "a")
 elif args.mspron:

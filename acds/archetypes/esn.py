@@ -251,7 +251,7 @@ class DeepReservoir(torch.nn.Module):
         # contains units/layers neurons. This is done to keep the number of
         # state variables projected to the next layer fixed,
         # i.e., the number of trainable parameters does not depend on concat
-        if concat:
+        if concat or True:
             self.layers_units = int(tot_units / n_layers)
         else:
             self.layers_units = tot_units

@@ -39,7 +39,7 @@ parser.add_argument("--cpu", action="store_true")
 parser.add_argument("--esn", action="store_true")
 parser.add_argument("--ron", action="store_true")
 parser.add_argument("--deepron", action="store_true")
-
+parser.add_argument("--concat", action="store_true")
 parser.add_argument("--batch", type=int, default=4)
 parser.add_argument("--n_hid", type=int, default=100)
 parser.add_argument("--dt", type=float, default=0.0075)
@@ -54,12 +54,13 @@ parser.add_argument("--n_layers", type=int, default=1, help="Number of layers of
 parser.add_argument(
     "--sparsity", type=float, default=0.0, help="Sparsity of the reservoir"
 )
-
+parser.add_argument("--ron_leaky_esn", type=bool, default=False)
 parser.add_argument("--diffusive_gamma", type=float, default=0.0, help="diffusive term")
 parser.add_argument("--topology", type=str, default="full", choices=["full", "antisymmetric", "orthogonal"], help="Topology of the hidden-to-hidden matrix")
 parser.add_argument("--use_test", action="store_true")
 parser.add_argument("--trials", type=int, default=1)
-
+# save on the data/user folder
+parser.add_argument("--remote", action="store_true")
 parser.add_argument("--resultsuffix", type=str, default="")
 
 args = parser.parse_args()
@@ -175,12 +176,16 @@ def plot_statistics(results_dict, test_dict, model):
     
     return plt
  
-    
-gamma = (args.gamma - args.gamma_range / 2.0, args.gamma + args.gamma_range / 2.0)
-epsilon = (
-    args.epsilon - args.epsilon_range / 2.0,
-    args.epsilon + args.epsilon_range / 2.0,
-)
+ 
+if args.ron_leaky_esn:
+    gamma = 1 
+    epsilon = 1/args.dt
+else:
+    gamma = (args.gamma - args.gamma_range / 2.0, args.gamma + args.gamma_range / 2.0)
+    epsilon = (
+        args.epsilon - args.epsilon_range / 2.0,
+        args.epsilon + args.epsilon_range / 2.0,
+    )
 
 train_memory, valid_memory, test_memory = 0.0, 0.0, 0.0
 train_nrmse, valid_nrmse, test_nrmse = 0.0, 0.0, 0.0
@@ -195,21 +200,20 @@ for t in range(args.trials):
             n_inp,
             tot_units=args.n_hid,
             n_layers=args.n_layers,
-            concat=True,
+            concat=args.concat,
             spectral_radius=args.rho,
             inter_scaling=args.inp_scaling,
             input_scaling=args.inp_scaling,
-            #inter_scaling=args.inp_scaling,
             # Since we are using tot unit and dividing them by the number of layers we need to adjust the connectivity
             connectivity_recurrent=int((1 - args.sparsity) * args.n_hid/args.n_layers),
-            connectivity_input=int(args.n_hid/args.n_layers),
-            connectivity_inter=int(args.n_hid/args.n_layers),
+            connectivity_input=int((1 - args.sparsity) * args.n_hid/args.n_layers),
+            connectivity_inter=int((1 - args.sparsity) * args.n_hid/args.n_layers),
             leaky=args.leaky,
         ).to(device)
     elif args.ron:
         model = RandomizedOscillatorsNetwork(
             n_inp=1,
-            total_units=args.n_hid,
+            n_hid=args.n_hid,
             dt=args.dt,
             gamma=gamma, 
             epsilon=epsilon,
@@ -233,12 +237,11 @@ for t in range(args.trials):
             input_scaling=args.inp_scaling,
             inter_scaling=args.inp_scaling,
             # This is not used in ron, to scale internal recurrent use reservoir scalre
-            #inter_scaling=0.1,
             reservoir_scaler=args.inp_scaling,
             device=device,
             connectivity_input=int(args.n_hid / args.n_layers),
             connectivity_inter=int(args.n_hid / args.n_layers),
-            concat=True,
+            concat=args.concat,
         ).to(device)
     else:
         raise ValueError("Wrong model choice.")
@@ -264,11 +267,17 @@ for t in range(args.trials):
     u = u.astype(np.float32)
 
     states_u = model(torch.tensor(u[:-delay]).to(device).reshape(1, -1, 1))[0].cpu().numpy()
-    states_u = states_u.reshape(-1, args.n_hid)
     
-    
+    if args.concat:
+        states_u = states_u.reshape(-1, args.n_hid)
+    # this when we want just to take last state, because
+    # if hidden states are not concatenated we have to reshape accordingly
+    else:
+        states_u = states_u.reshape(-1, args.n_hid // args.n_layers)
+        
     for i in tqdm(range(1, delay + 1)):
              
+        print(args.concat)
         states_i = states_u[i:num_steps, :]
         target = u[: num_steps - i, 0]
             
@@ -337,14 +346,16 @@ for t in range(args.trials):
     total_test_memory = 0
     total_train_memory = 0
     
-if args.ron:
-    f = open(os.path.join(args.resultroot, f"MemoryCapacity_log_RON_{args.topology}{args.resultsuffix}.txt"), "a")
-elif args.deepron:
-    f = open(os.path.join(args.resultroot, f"MemoryCapacity_log_DEEPRON{args.resultsuffix}.txt"), "a")
-elif args.esn:
-    f = open(os.path.join(args.resultroot, f"MemoryCapacity_log_ESN{args.resultsuffix}.txt"), "a")
-else:
-    raise ValueError("Wrong model choice.")
+if args.remote:
+    args.resultroot = "/data/v.gargano"    
+    if args.ron:
+        f = open(os.path.join(args.resultroot, f"MemoryCapacity_log_RON_{args.topology}{args.resultsuffix}.txt"), "a")
+    elif args.deepron:
+        f = open(os.path.join(args.resultroot, f"MemoryCapacity_log_DEEPRON{args.resultsuffix}.txt"), "a")
+    elif args.esn:
+        f = open(os.path.join(args.resultroot, f"MemoryCapacity_log_ESN{args.resultsuffix}.txt"), "a")
+    else:
+        raise ValueError("Wrong model choice.")
 
 # sum train, valid and test memory dict lists and divide by the number of trials
 train_memory = sum([sum(v) for k, v in train_memory_dict.items()]) / args.trials

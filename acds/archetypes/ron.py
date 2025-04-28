@@ -90,6 +90,8 @@ class RandomizedOscillatorsNetwork(nn.Module):
             )
         else:
             self.gamma = gamma
+        self.gamma = torch.nn.Parameter(self.gamma, requires_grad=False)
+
         if isinstance(epsilon, tuple):
             eps_min, eps_max = epsilon
             self.epsilon = (
@@ -99,6 +101,7 @@ class RandomizedOscillatorsNetwork(nn.Module):
             )
         else:
             self.epsilon = epsilon
+        self.epsilon = torch.nn.Parameter(self.epsilon, requires_grad=False)
 
         h2h = get_hidden_topology(n_hid, topology, sparsity, reservoir_scaler)
         if topology != 'antisymmetric':

@@ -1,3 +1,6 @@
+results_collective/
+results_single/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 .idea/

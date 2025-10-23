@@ -3,7 +3,6 @@ import torch
 import random
 import numpy as np
 from tqdm import tqdm
-import nolds
 import os
 
 from acds.archetypes.ron import RandomizedOscillatorsNetwork
@@ -16,7 +15,7 @@ def pca(all_states, pca_dim, out_dir, suffix_file=""):
     pca_result = pca.fit_transform(all_states)
     print(f"Explained variance ratios: {pca.explained_variance_ratio_}")
     print(f"Cumulative explained variance: {np.cumsum(pca.explained_variance_ratio_)}")
-    print(f"Total variance explained by first 3 components: {np.sum(pca.explained_variance_ratio_)}")
+    print(f"Total variance explained by first {pca_dim} components: {np.sum(pca.explained_variance_ratio_)}")
 
     np.save(os.path.join(out_dir, f"pca_result{suffix_file}.npy"), pca_result)
 
@@ -42,48 +41,11 @@ def pca(all_states, pca_dim, out_dir, suffix_file=""):
     return pca_result
 
 
-def fractal_dim(data, seq_len, out_dir, corr=True, lyap=True):
-    # compute correlation dimension for each principal component separately
-    dims = []
-    ls = []
-    for i in range(data.shape[-1]):  # for each principal component
-        avg_dim = 0.
-        avg_l = 0.
-        seq_count = 0.
-        for j in tqdm(range(0, data.shape[0], seq_len), desc=f"Computing fractal dimension for PC{i}"):  # for each trajectory
-            seq_count += 1
-            dim = nolds.corr_dim(data[j:j+seq_len, i], emb_dim=10, lag=1) if corr else -1.
-            l = nolds.lyap_r(data[j:j+seq_len, i]) if lyap else -1.
-            # nolds may return a tuple, use the first element if so
-            if isinstance(dim, tuple):
-                avg_dim += dim[0]
-            else:
-                avg_dim += dim
-            if isinstance(l, tuple):
-                avg_l += l[0]
-            else:
-                avg_l += l
-        avg_dim /= float(seq_count)
-        avg_l /= float(seq_count)
-        dims.append(avg_dim)
-        ls.append(avg_l)
-
-        print(f"Average correlation dimension over all trajectories for PC{i}: {avg_dim}")
-        print(f"Average max Lyapunov exponent over all trajectories for PC{i}: {avg_l}")
-
-    with open(os.path.join(out_dir, "fractal_dim.txt"), "w") as f:
-        for i in range(len(dims)):
-            f.write(f"PC{i}: {dims[i]};  ")
-            f.write(f"Max Lyapunov PC{i}: {ls[i]}\n")
-
-    return dims, ls
-
-
 def main(args):
     seq_len = args.timesteps - args.washout
 
     # Prepare output directory 
-    out_dir = os.path.join("results_single", f"rho_{args.rho}_nhid_{args.n_hid}_timesteps_{args.timesteps}")
+    out_dir = os.path.join("/scratch/a.cossu/results_single", f"rho_{args.rho}_nhid_{args.n_hid}_inp_scaling_{args.inp_scaling}_timesteps_{args.timesteps}")
     os.makedirs(out_dir, exist_ok=True)
 
     # Fix all random seeds for reproducibility
@@ -93,59 +55,65 @@ def main(args):
 
     # Create the RandomizedOscillatorsNetwork instance
     ron = RandomizedOscillatorsNetwork(
-        n_inp=args.n_inp,
+        n_inp=1,
         rho=args.rho,
         n_hid=args.n_hid,
         dt=args.dt,
         gamma=args.gamma,
         epsilon=args.epsilon,
         device=args.device,
-        input_scaling=0.0,  # No input, no bias
+        input_scaling=args.inp_scaling,
     )
+    ron.bias = torch.nn.Parameter(torch.zeros(args.n_hid).to(args.device), requires_grad=False)
 
-    # Generate zero input for specified time steps and batch size
-    zero_input = torch.zeros(args.batch_size, args.timesteps, args.n_inp)
+    # Generate zero input for specified time steps
+    zero_input = torch.zeros(1, args.timesteps, 1)
 
     all_states = []
-
+    all_inputs = []
     for it in tqdm(range(args.n_init_states), desc="Computing trajectories"):
         # Generate random initial hidden states in [-1, 1]
         hs = (
-            torch.rand(args.batch_size, args.n_hid) * 2 - 1,
-            torch.rand(args.batch_size, args.n_hid) * 2 - 1
+            torch.rand(1, args.n_hid) * 2 - 1,
+            torch.rand(1, args.n_hid) * 2 - 1
         )
         hs = (hs[0].to(args.device), hs[1].to(args.device))
 
         # Feed the model and collect all hy activations
         with torch.no_grad():
+            input_signal = zero_input + torch.randn_like(zero_input)
             hidden_states, _ = ron(zero_input, hs=hs)
-
-        # remove washout
+        
+        # remove washout        
+        all_inputs.append(input_signal[:, args.washout:].squeeze(-1).cpu().numpy())
         hidden_states = hidden_states[:, args.washout:, :].cpu().numpy()
 
         all_states.append(hidden_states.squeeze(0))
     
+    # add a trailing dimension of shape 1 to all inputs
+    all_inputs = np.concatenate(all_inputs, axis=0)  # shape (n_init_states, timesteps)
     all_states = np.concatenate(all_states, axis=0)  # shape (n_init_states*timesteps, n_hid)
-    np.save(os.path.join(out_dir, "all_states.npy"), all_states)
     
     pca_result = pca(all_states, args.pca_dim, out_dir)
 
-    fractal_dim(pca_result, seq_len, out_dir)
+    np.savetxt(os.path.join(out_dir, "W.csv"), ron.h2h.detach().cpu().numpy(), delimiter=',', fmt="%.6f")
+    np.savetxt(os.path.join(out_dir, "V.csv"), ron.x2h.detach().cpu().numpy(), delimiter=',', fmt="%.6f")
+    np.savetxt(os.path.join(out_dir, "b.csv"), ron.bias.detach().cpu().numpy(), delimiter=',', fmt="%.6f")
+    np.save(os.path.join(out_dir, "u_timeseries.npy"), all_inputs)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run RandomizedOscillatorsNetwork with configurable parameters.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--n_inp", type=int, default=1, help="Number of input units")
     parser.add_argument("--n_hid", type=int, default=10, help="Number of hidden units")
     parser.add_argument("--dt", type=float, default=1, help="Time step")
     parser.add_argument("--rho", type=float, default=0.4, help="Spectral radius")
+    parser.add_argument("--inp_scaling", type=float, default=0.1, help="Input scaling")
     parser.add_argument("--gamma", type=float, default=1, help="Damping factor")
     parser.add_argument("--epsilon", type=float, default=1, help="Stiffness factor")
     parser.add_argument("--device", type=str, default="cpu", help="Device to run the model on")
     parser.add_argument("--timesteps", type=int, default=3000, help="Number of time steps")
     parser.add_argument("--washout", type=int, default=1000, help="Time steps to washout")
-    parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument("--n_init_states", type=int, default=1000, help="Number of initial states to generate")
     parser.add_argument("--pca_dim", type=int, default=2, help="Number of PCA dimensions")
     args = parser.parse_args()

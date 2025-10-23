@@ -4,7 +4,7 @@ import random
 import numpy as np
 from tqdm import tqdm
 import os
-from experiments.attractors_single import fractal_dim, pca
+from experiments.attractors_single import pca
 from acds.archetypes.ron import RandomizedOscillatorsNetwork
 from collections import defaultdict
 
@@ -58,8 +58,8 @@ def plot_combined_pca(pca_results, out_dir, labels=None):
 def main(args):
     # Prepare output directory
     out_dir = os.path.join(
-        "results_collective",
-        f"mod{args.n_modules}_rho_{args.rho}_nhid_{args.n_hid}_timesteps_{args.timesteps}_inpscaling_{args.inp_scaling}"
+        "/scratch/a.cossu/results_collective",
+        f"mod{args.n_modules}_rho_{args.rho}_nhid_{args.n_hid}_timesteps_{args.timesteps}_inpscaling_{args.inp_scaling}{args.suffix}"
     )
     os.makedirs(out_dir, exist_ok=True)
 
@@ -84,7 +84,7 @@ def main(args):
         models.append(ron)
 
     all_states = defaultdict(list)
-
+    input_signals = {i: [] for i in range(args.n_modules)}
     for it in tqdm(range(args.n_init_states), desc="Computing trajectories"):
         # Random initial hidden states for both networks in [-1, 1]
         hs = []
@@ -96,18 +96,27 @@ def main(args):
             hs.append(h)
 
         states = defaultdict(list)
+        inputs = {i: [] for i in range(args.n_modules)}
         with torch.no_grad():
             for t in range(args.timesteps):
                 for i in range(args.n_modules):
                     input_idx = (i - 1) % args.n_modules  # Ring topology
-                    hy, hz = models[i].cell(hs[input_idx][0], hs[i][0], hs[i][1]) 
+                    input_signal = hs[input_idx][0] + torch.randn_like(hs[input_idx][0]) # noise mean 0 variance 1
+                    hy, hz = models[i].cell(input_signal, hs[i][0], hs[i][1])
                     hs[i] = (hy, hz)
                     states[i].append(hy)
+                    inputs[i].append(input_signal)
+        
+        for i in range(args.n_modules):
+            traj_inp = torch.cat(inputs[i][args.washout:], dim=0)  # shape (timesteps - washout, n_hid)
+            input_signals[i].append(traj_inp)
 
         hidden_states = {}
         for i in range(args.n_modules):
             hidden_states[i] = torch.stack(states[i], dim=1)[:, args.washout:, :].cpu().numpy().squeeze(0)
             all_states[i].append(hidden_states[i])
+
+    torch.save(input_signals, os.path.join(out_dir, f"input_signals.pt"))
 
     for i in range(args.n_modules):
         np.save(os.path.join(out_dir, f"all_states{i}.npy"), all_states[i])
@@ -118,9 +127,10 @@ def main(args):
         pca_results.append(pca_result)
     plot_combined_pca(pca_results, out_dir, labels=[f"{i}" for i in range(args.n_modules)])
 
-    # seq_len = args.timesteps - args.washout
-    # for i in range(args.n_modules):
-    #    fractal_dim(pca_results[i], seq_len, out_dir)
+    for i, ron in enumerate(models):
+        np.savetxt(os.path.join(out_dir, f"W_{i}.csv"), ron.h2h.detach().cpu().numpy(), delimiter=',', fmt="%.6f")
+        np.savetxt(os.path.join(out_dir, f"V_{i}.csv"), ron.x2h.detach().cpu().numpy(), delimiter=',', fmt="%.6f")
+        np.savetxt(os.path.join(out_dir, f"b_{i}.csv"), ron.bias.detach().cpu().numpy(), delimiter=',', fmt="%.6f")
 
 
 if __name__ == "__main__":
@@ -138,6 +148,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_init_states", type=int, default=1000, help="Number of initial states to generate")
     parser.add_argument("--n_modules", type=int, default=2, help="Number of modules to use")
     parser.add_argument("--pca_dim", type=int, default=2, help="Number of PCA dimensions")
+    parser.add_argument("--suffix", type=str, default="", help="Suffix for output files")
     args = parser.parse_args()
 
     main(args)

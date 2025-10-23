@@ -90,6 +90,8 @@ def main(args):
 
         all_states.append(hidden_states.squeeze(0))
     
+    np.save(os.path.join(out_dir, "all_states.npy"), all_states)
+    
     # add a trailing dimension of shape 1 to all inputs
     all_inputs = np.concatenate(all_inputs, axis=0)  # shape (n_init_states, timesteps)
     all_states = np.concatenate(all_states, axis=0)  # shape (n_init_states*timesteps, n_hid)

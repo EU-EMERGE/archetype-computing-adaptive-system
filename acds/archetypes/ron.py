@@ -3,6 +3,7 @@ from typing import (
     Literal,
     Tuple,
     Union,
+    Optional
 )
 
 import torch
@@ -89,7 +90,7 @@ class RandomizedOscillatorsNetwork(nn.Module):
                 + gamma_min
             )
         else:
-            self.gamma = gamma
+            self.gamma = torch.tensor(gamma).float().to(device)
         self.gamma = torch.nn.Parameter(self.gamma, requires_grad=False)
 
         if isinstance(epsilon, tuple):
@@ -100,7 +101,7 @@ class RandomizedOscillatorsNetwork(nn.Module):
                 + eps_min
             )
         else:
-            self.epsilon = epsilon
+            self.epsilon = torch.tensor(epsilon).float().to(device)
         self.epsilon = torch.nn.Parameter(self.epsilon, requires_grad=False)
 
         h2h = get_hidden_topology(n_hid, topology, sparsity, reservoir_scaler)
@@ -134,18 +135,24 @@ class RandomizedOscillatorsNetwork(nn.Module):
         hy = hy + self.dt * hz
         return hy, hz
 
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, List[torch.Tensor]]:
+    def forward(self, x: torch.Tensor, hs: Optional[Tuple[torch.Tensor, torch.Tensor]] = None) -> Tuple[torch.Tensor, List[torch.Tensor]]:
         """Forward pass on a given input time-series.
 
         Args:
             x (torch.Tensor): Input time-series shaped as (batch, time, input_dim).
+            hs (tuple, optional): Tuple containing the initial hidden states.
+                If None, both are initialized to zero. Defaults to None.
 
         Returns:
             torch.Tensor: Hidden states of the network shaped as (batch, time, n_hid).
             list: List containing the last hidden state of the network.
         """
-        hy = torch.zeros(x.size(0), self.n_hid).to(self.device)
-        hz = torch.zeros(x.size(0), self.n_hid).to(self.device)
+        if hs is None:
+            hy = torch.zeros(x.size(0), self.n_hid).to(self.device)
+            hz = torch.zeros(x.size(0), self.n_hid).to(self.device)
+        else:
+            hy, hz = hs
+
         all_states = []
         for t in range(x.size(1)):
             hy, hz = self.cell(x[:, t], hy, hz)

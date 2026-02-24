@@ -6,11 +6,11 @@ authors = ["Valerio De Caro <43961074+vdecaro@users.noreply.github.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
-torch = "^2.2.1"
-numpy = "^1.26.4"
-scipy = "^1.12.0"
-torchvision = "^0.17.1"
+python = ">=3.11"
+torch = ">=2.2.1"
+numpy = ">=1.26.4"
+scipy = ">=1.12.0"
+torchvision = ">=0.17.1"
 
 
 [build-system]

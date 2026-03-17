@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
+Python porting of lyap_discreteRNN.c
 Computation of Lyapunov Spectrum for a Discrete-Time, Input-Driven RNN
 
 This program computes the Lyapunov spectrum of a discrete-time recurrent
 neural network (RNN) driven by an external input, using the standard
 discrete-time Benettin algorithm (Benettin et al., 1980) as described in
-Pikovsky & Politi (2016), *Lyapunov Exponents: A Tool to Explore Complex
+Pikovsky & Politi (2016), *Lyapunov Exp onents: A Tool to Explore Complex
 Dynamics* (Cambridge University Press).
 
 The RNN dynamics is defined as:
     h_{t+1} = tanh(W h_t + V u_t + b)
-where:
+where: 
     - h_t ∈ ℝ^N is the hidden state,
     - u_t ∈ ℝ^{input_dim} is the external input at time t,
     - W is the recurrent (hidden-to-hidden) weight matrix,
@@ -59,7 +60,7 @@ def compute_lyapunov(
     b: np.ndarray,
     h_traj: np.ndarray,
     u_traj: np.ndarray,
-    fb_traj: np.ndarray
+    fb_traj: Optional[np.ndarray] = None
 ) -> np.ndarray:
     """
     Compute Lyapunov exponents using the Benettin algorithm with QR decomposition.
@@ -93,7 +94,9 @@ def compute_lyapunov(
             #print(f"Progress: t={t}/{T}")
         
         # Compute activation derivative: phi'(x) = 1 - tanh^2(x)
-        x = W @ h_traj[t] + V @ u_traj[t] + b + fb_traj[t]
+        x = W @ h_traj[t] + V @ u_traj[t] + b 
+        if fb_traj is not None:
+            x += fb_traj[t]
         phi_prime = 1.0 - np.tanh(x) ** 2
         
         # Apply Jacobian: J_t = diag(phi_prime) @ W
@@ -131,7 +134,7 @@ def main(N: int = 100, T: int = 1000, input_dim: int = 1, nl: Optional[int] = No
     u_traj = load_csv("u_timeseries.csv")
     
     # Compute Lyapunov exponents
-    lyap = compute_lyapunov(N, nl, T, input_dim, W, V, b, h_traj, u_traj)
+    lyap = compute_lyapunov(nl, W, V, b, h_traj, u_traj)
     
     # Write results to file
     np.savetxt("lyapunov_rnn.dat", lyap, fmt="%.15e")

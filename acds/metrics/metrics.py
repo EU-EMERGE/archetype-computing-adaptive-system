@@ -2,7 +2,7 @@
 Code to compute the attractor dimension metrics in the paper ---
 List of metrics considered:
 - Correlation dimension (CD)
-- Kernel rank (KR)
+- Kernel rank (KR) i.e. effective rank of the kernel matrix of the trajectory
 - Participation ratio (PR)
 - Maximum Lyapunov exponent (MLE)
 """
@@ -104,10 +104,12 @@ def compute_effective_kernel_rank(trajectory, eps = 1e-10) -> list[float]:
 
 
 def nrmse(preds: np.ndarray, target: np.ndarray) -> float:
+    assert preds.shape == target.shape, "Predictions and target must have the same shape"
     mse = np.mean(np.square(preds - target))
     norm = np.sqrt(np.mean(np.square(target)))
     # rmse / norm
     return np.sqrt(mse) / (norm + 1e-9)
+
 
 
 def compute_lyapunov(model:ArchetipesNetwork, trajectory: np.ndarray, inputs: np.ndarray, feedbacks: np.ndarray, n_lyap: int, transient: int = 4000) -> list[float]:

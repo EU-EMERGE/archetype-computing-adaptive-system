@@ -2,18 +2,24 @@ import torch
 
 
 def cycle_matrix(n):
+    if n == 1:
+        return torch.zeros((1, 1))
     m = torch.zeros((n, n))
     m[torch.arange(1, n, dtype=torch.int), torch.arange(0, n-1, dtype=torch.int)] = 1 
     m[0, n-1] = 1
     return m
 
 def full_matrix(n):
+    if n == 1:
+        return torch.zeros((1, 1))
     m = torch.ones((n, n))
     m[torch.arange(n, dtype=torch.int), torch.arange(n, dtype=torch.int)] = 0
     return m
 
 
 def random_matrix(n, p=0.5, seed=None):
+    if n == 1:
+        return torch.zeros((1, 1))
     if seed is not None:
         torch.manual_seed(seed)
     probs = torch.empty((n, n)).uniform_(0, 1)
@@ -23,6 +29,9 @@ def random_matrix(n, p=0.5, seed=None):
 
 
 def star_matrix(n):
+    if n == 1:
+        return torch.zeros((1, 1))
+
     m = torch.zeros((n, n))
     m[1, :] = 1
     m[:, 1] = 1

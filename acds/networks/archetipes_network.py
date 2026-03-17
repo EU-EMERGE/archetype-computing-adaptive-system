@@ -51,7 +51,7 @@ class ArchetipesNetwork(nn.Module):
         self.n_modules = len(archetypes)
         self.register_buffer("connection_weights", connection_topology)
         # init connection topology
-        self.register_buffer("connection_scaling", 1.0 / self.connection_weights.sum(1).float()) # scale by the number of input modules for each row
+        self.register_buffer("connection_scaling", 1.0 / connection_topology.sum(dim=1).clamp(min=1.0)) # avoid division by zero
         wm = torch.empty(self.n_modules, self.n_modules, self.n_hid, self.n_hid).uniform_(-2, 2) # one connection matrix for each pair of modules
         spec_rad = torch.vmap(torch.linalg.eigvals)(rearrange(wm, "m1 m2 n_h1 n_h2 -> (m1 m2) n_h1 n_h2")).abs().amax(1)
         self.wm = einsum(wm, 1 / rearrange(spec_rad, "(m1 m2) -> m1 m2", m1 = math.isqrt(len(spec_rad))), "m1 m2 n_h1 n_h2, m1 m2 -> m1 m2 n_h1 n_h2") * rho_m
@@ -105,6 +105,7 @@ class ArchetipesNetwork(nn.Module):
             outs = torch.zeros((self.n_modules, self.n_hid))
             
         for x_t in x:
+
             states, fbs = self._step(x_t, states, outs)
             outs = states[:, 0] # we assume the first state is the "output" one
             state_list.append(states)

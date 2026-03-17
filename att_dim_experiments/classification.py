@@ -4,21 +4,31 @@ import numpy as np
 import wandb
 from typing import Optional
 from sklearn.model_selection import train_test_split
-from sklearn.linear_model import RidgeClassifierCV
-from acds.archetypes import InterconnectionRON
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.linear_model import RidgeClassifierCV, RidgeClassifier
+from acds.archetypes import InterconnectionRON, DeepReservoir
 from acds.networks import ArchetipesNetwork, random_matrix, full_matrix, cycle_matrix, deep_reservoir, star_matrix, local_connections
 from aeon.datasets import load_classification
 from acds.networks.utils import unstack_state
-from att_dim_experiments.metrics import *
-from att_dim_experiments.lyap_discreteRNN import compute_lyapunov
+from acds.metrics import *
+from acds.metrics import compute_lyapunov
+
+
+cm_dict = {
+    "random": random_matrix, 
+    "full": full_matrix, 
+    "cycle": cycle_matrix,
+    "deep": deep_reservoir,
+    "deep_no_skip": deep_reservoir,
+    "star": star_matrix,
+    "local": local_connections,
+    "local_no_skip": local_connections,
+    }
+
+
 
 def get_connection_matrix(name: str, n_modules: int, p: float = 0.5, seed: Optional[int] = None) -> torch.Tensor:
-    cm_dict = {"random": random_matrix, 
-               "full": full_matrix, 
-               "cycle": cycle_matrix,
-               "deep": deep_reservoir,
-               "star": star_matrix,
-               "local": local_connections}
+
     if name not in cm_dict:
         raise ValueError(f"Connection matrix '{name}' not recognized. Available options are: {list(cm_dict.keys())}")
     if name == "random":
@@ -33,6 +43,7 @@ def get_model(args, n_input: int = 1):
         alpha = args.get('alpha')
         args['dt'] = np.sqrt(alpha)
         args['epsilon'] = 1 / args['dt']
+        args['gamma'] = 1.0
 
     for _ in range(args['n_modules']):
         modules.append(InterconnectionRON(
@@ -46,26 +57,26 @@ def get_model(args, n_input: int = 1):
             input_scaling=args.get('input_scaling'),
         ))
 
-    cm_dict = {"random": random_matrix, 
-               "full": full_matrix, 
-               "cycle": cycle_matrix,
-               "deep": deep_reservoir,
-                "line": deep_reservoir,
-                "star": star_matrix,
-                "local": local_connections,
-                "bidirectional": local_connections 
-    }
+
     cm_type = args.get("connection_matrix", "cycle")
     connection_matrix = cm_dict[cm_type]
     # input connection mask
     input_mask = torch.ones((args['n_modules'],))
-    # if cm_type == "bidirectional" or cm_type == "deep":
-    #     input_mask[1:] = 0 # only first module gets input
+    if cm_type == "deep_no_skip" or cm_type == "local_no_skip":
+         input_mask[1:] = 0 # only first module gets input
 
     if args.get("connection_matrix", "cycle") == "random":
         p = args.get("p", 0.2)
         connection_matrix = lambda n: random_matrix(n, p)
     network = ArchetipesNetwork(modules, connection_matrix(args['n_modules']), rho_m = args.get('rho_m', 1.0), input_mask=input_mask)
+    network = DeepReservoir(
+        input_size=n_input,
+        tot_units=args['n_hid'],
+        n_layers=1,
+        leaky=args.get('alpha', 1.0),
+        spectral_radius=args.get('rho', 1.0),
+        input_scaling=args.get('input_scaling', 1.0),
+    )
     return network
 
 
@@ -75,6 +86,21 @@ def get_data(args):
 
     test_dataset, test_target = load_classification(name=args['dataset'], split="test", extract_path='att_dim_experiments/data')
     test_dataset = np.permute_dims(test_dataset, [0, 2, 1])
+    # cast data from -1, 1 to 0, 1
+    if np.unique(train_target).astype(int).tolist() == [-1, 1]:
+       train_target = (train_target.astype(int) + 1) // 2
+       test_target = (test_target.astype(int) + 1) // 2
+
+    print(np.unique_counts(train_target), np.unique_counts(test_target))
+    #scaler = MinMaxScaler(feature_range=(-1, 1))
+    #n_samples, seq_len, n_features = train_dataset.shape
+    #train_dataset = scaler.fit_transform(train_dataset.reshape(-1, n_features)).reshape(n_samples, seq_len, n_features)
+    #n_samples, seq_len, n_features = test_dataset.shape
+    #test_dataset = scaler.transform(test_dataset.reshape(-1, n_features)).reshape(n_samples, seq_len, n_features)
+    
+
+    
+
    # train_dataset, val_dataset, train_target, val_target = train_test_split(train_dataset, train_target, random_state=42, test_size=0.25, stratify=train_target)
     return (train_dataset, train_target.astype(int)), (test_dataset, test_target.astype(int))
 
@@ -93,17 +119,25 @@ def compute_states(model:ArchetipesNetwork, data:torch.Tensor):
 
 def train_readout(states:torch.Tensor, labels:torch.Tensor, ridge_alpha:float):
     n_modules, n_hid = states.shape[1], states.shape[-1]
+
     X = states[-1, :, :, 0, :].reshape(states.shape[2], n_modules * n_hid).numpy()  # (len_seq, n_mod, n_samples, 2, h_dim) -> (n_samples, n_mod * h_dim)
-    y = labels
-    ridge = RidgeClassifierCV(cv=10)
+    y = labels.numpy()
+    ridge = RidgeClassifierCV(cv=10, alphas=np.logspace(-6, 6, 13))
     ridge.fit(X, y)
+
+    print("Best ridge alpha:", ridge.alpha_)
+
+
     return ridge
 
 
 def evaluate(states:torch.Tensor, labels:torch.Tensor, readout:RidgeClassifierCV):
     n_modules, n_hid = states.shape[1], states.shape[-1]
-    X = states[-1, :, :, 0, :].reshape(states.shape[2], n_modules * n_hid).numpy()  # (len_seq, n_mod, n_samples, 2, h_dim) -> (n_samples, n_mod * h_dim)
+    #X = states[-1, :, :, 0, :].reshape(states.shape[2], n_modules * n_hid).numpy()  # (len_seq, n_mod, n_samples, 2, h_dim) -> (n_samples, n_mod * h_dim)
     y = labels.numpy()
+    predictions = readout.predict(X)
+    print(X.max(), X.min())
+    print(np.unique_counts(predictions))
     return readout.score(X, y) # acc
     
 
@@ -137,9 +171,12 @@ def run_classification():
         readout = train_readout(train_states, torch.Tensor(train_labels), ridge_alpha=args.ridge_alpha)
         if not args.silent:
             print("Readout trained.")
-        # Evaluate on validation and test sets
+            # Evaluate on validation and test sets
+            print("Evaluating...")
+            print("Train set:")
         train_score = evaluate(train_states, torch.Tensor(train_labels), readout)
-
+        if not args.silent:
+            print("Test set:")
         test_score = evaluate(test_states, torch.Tensor(test_labels), readout)
 
 
@@ -149,32 +186,32 @@ def run_classification():
         corr_dims = []
         part_ratios = []
         lyapunov_exps = []
-        for state, fb in zip(train_states_np, train_fbs_np):
-            state = state[:, :, 0]
-            corr_dims.append(compute_corr_dim(state, transient=0))
-            part_ratios.append(compute_participation_ratio(state, transient=0))
-            l = []
-            for i, p in enumerate(params):
-                l.append(compute_lyapunov(nl=2, W=p['h2h']. numpy().T, V=p['x2h'].numpy().T, b=p['bias'].numpy(), h_traj=state[:, i], u_traj=train_data[i], fb_traj=fb[:, i]))
-            lyapunov_exps.append(l)
-        mles = np.mean(np.array(lyapunov_exps), axis=0)[:, 0]
-        eff_ranks = compute_effective_kernel_rank(train_states_np[:, :, :, 0])
+        # for state, fb in zip(train_states_np, train_fbs_np):
+        #     state = state[:, :, 0]
+        #     corr_dims.append(compute_corr_dim(state, transient=0))
+        #     part_ratios.append(compute_participation_ratio(state, transient=0))
+        #     l = []
+        #     for i, p in enumerate(params):
+        #         l.append(compute_lyapunov(nl=2, W=p['h2h']. numpy().T, V=p['x2h'].numpy().T, b=p['bias'].numpy(), h_traj=state[:, i], u_traj=train_data[i], fb_traj=fb[:, i]))
+        #     lyapunov_exps.append(l)
+        # mles = np.mean(np.array(lyapunov_exps), axis=0)[:, 0]
+        # eff_ranks = compute_effective_kernel_rank(train_states_np[:, :, :, 0])
 
 
         metrics = {
             "train_acc": train_score,
-            "val_acc": readout.best_score_,
+            #"val_acc": readout.best_score_,
             "test_acc": test_score,
             "att_dim/correlation_dimension_mean": np.mean(corr_dims),
             "att_dim/participation_ratio_mean": np.mean(part_ratios),
-            "att_dim/effective_rank_mean": np.mean(eff_ranks),
-            "lyapunov/max_lyap_exp": mles,
-            "lyapunov/mle_mean": mles.mean()
+            # "att_dim/effective_rank_mean": np.mean(eff_ranks),
+            # "lyapunov/max_lyap_exp": mles,
+            # "lyapunov/mle_mean": mles.mean()
         }
         metrics.update(
         {"att_dim/correlation_dimension": corr_dims,
         "att_dim/participation_ratio": part_ratios,
-        "att_dim/effective_rank": eff_ranks,
+        # "att_dim/effective_rank": eff_ranks,
         })
 
 
@@ -199,14 +236,14 @@ def parse_args():
     parser.add_argument("--n_modules", type=int, default=4, help="Number of archetype modules in the network")
     parser.add_argument("--n_hid", type=int, default=20, help="Number of hidden units in each archetype")
     parser.add_argument("--connection_matrix", type=str, default="cycle",
-                        choices=["random", "full", "cycle", "deep", "star", "local"],
+                        choices=["random", "full", "cycle", "deep", "star", "local", "deep_no_skip", "bidirectional"],
                         help="Type of connection matrix to use")
     
     # esn parameters
     parser.add_argument("--rho_m", type=float, default=0.9, help="Spectral radius scaling for inter-module connections")
     parser.add_argument("--input_scaling", type=float, default=1.0, help="Input scaling for the archetype network")
     parser.add_argument("--rho", type=float, default=1.0, help="Spectral radius for each archetype module")
-
+    parser.add_argument("--alpha", type=float, default=None, help="Alpha parameter equivalent to the leak rate for the archetype dynamics")
 
     # fixed rho params
     parser.add_argument("--diffusive_gamma", type=float, default=0.0, help="Diffusive gamma parameter for the archetype dynamics")

@@ -13,8 +13,8 @@ from acds.archetypes import InterconnectionRON
 from acds.networks import ArchetipesNetwork, random_matrix, full_matrix, cycle_matrix, deep_reservoir, star_matrix, local_connections
 from att_dim_experiments.data_utils import get_mg17, get_lorenz, get_narma10
 from acds.networks.utils import unstack_state
-from att_dim_experiments.metrics import compute_corr_dim, compute_participation_ratio, compute_effective_traj_rank, nrmse
-from att_dim_experiments.lyap_discreteRNN import compute_lyapunov
+from acds.metrics import compute_corr_dim, compute_participation_ratio, compute_effective_traj_rank, nrmse
+from acds.metrics import compute_lyapunov
 
 
 def get_connection_matrix(name: str, n_modules: int, p: float = 0.5, seed: Optional[int] = None) -> torch.Tensor:

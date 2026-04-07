@@ -1,0 +1,112 @@
+import numpy as np
+from sklearn.model_selection import train_test_split
+import torch
+from ron import RandomizedOscillatorsNetwork
+import argparse
+from tqdm import tqdm
+from sklearn import preprocessing
+from sklearn.linear_model import LogisticRegression
+
+
+def normalize_features(d, mean=None, std=None):
+    n_samples, timesteps, n_features = d.shape
+    d_reshaped = d.reshape(-1, n_features)  # reshape to (n_samples * timesteps, n_features)
+    if mean is None and std is None:
+        mean = np.mean(d_reshaped, axis=0)
+        std = np.std(d_reshaped, axis=0)
+    d_normalized = (d_reshaped - mean) / std
+    return d_normalized.reshape(n_samples, timesteps, n_features), mean, std
+
+
+@torch.no_grad()
+def test(data_loader, classifier, scaler):
+    activations, ys = [], []
+    for x, y in tqdm(data_loader):
+        x = x.to(device)
+        output = model(x)[-1][0]
+        activations.append(output.cpu())
+        ys.append(y)
+    activations = torch.cat(activations, dim=0).numpy()
+    activations = scaler.transform(activations)
+    ys = torch.cat(ys, dim=0).numpy()
+    return classifier.score(activations, ys)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Train RON model on touch dataset')
+    parser.add_argument('--n_hid', type=int, default=100, help='Number of hidden units')
+    parser.add_argument('--rho', type=float, default=0.9, help='Spectral radius')
+    parser.add_argument('--dt', type=float, default=0.1, help='Time step')
+    parser.add_argument('--gamma', type=float, default=1.0, help='Damping factor')
+    parser.add_argument('--epsilon', type=float, default=0.1, help='Stiffness factor')
+    parser.add_argument('--gamma_range', type=float, default=0.2, help='Range for gamma')
+    parser.add_argument('--epsilon_range', type=float, default=0.02, help='Range for epsilon')
+    parser.add_argument('--input_scaling', type=float, default=1.0, help='Input scaling factor')
+    parser.add_argument('--use_test', action='store_true', help='Use test set for evaluation')
+    args = parser.parse_args()
+
+    dataset = np.load('data/dataset_tomato.npz')
+    
+    x, y = dataset['x'], dataset['y']
+    # split in train, validation test with 70%, 15%, 15% ratio (165, 36, 36)
+    x_train, x_temp, y_train, y_temp = train_test_split(x, y, test_size=0.3, random_state=42, stratify=y)
+    x_val, x_test, y_val, y_test = train_test_split(x_temp, y_temp, test_size=0.5, random_state=42, stratify=y_temp)
+
+    normalized_x_train, mean, std = normalize_features(x_train)
+    normalized_x_val, _, _ = normalize_features(x_val, mean, std)
+    normalized_x_test, _, _ = normalize_features(x_test, mean, std)
+
+    # convert into Pytorch tensors
+    train_data = torch.tensor(normalized_x_train, dtype=torch.float32)
+    train_labels = torch.tensor(y_train, dtype=torch.long)
+    val_data = torch.tensor(normalized_x_val, dtype=torch.float32)
+    val_labels = torch.tensor(y_val, dtype=torch.long)
+    test_data = torch.tensor(normalized_x_test, dtype=torch.float32)
+    test_labels = torch.tensor(y_test, dtype=torch.long)
+
+    train_dataset = torch.utils.data.TensorDataset(train_data, train_labels)
+    val_dataset = torch.utils.data.TensorDataset(val_data, val_labels)
+    test_dataset = torch.utils.data.TensorDataset(test_data, test_labels)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=165, shuffle=True, drop_last=False)
+    valid_loader = torch.utils.data.DataLoader(val_dataset, batch_size=36, shuffle=False, drop_last=False)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=36, shuffle=False, drop_last=False)
+
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+    n_inp = train_data.shape[-1]
+    # convert unique numbers in y
+    n_out = len(np.unique(y_train))
+    gamma = (args.gamma - args.gamma_range / 2.0, args.gamma + args.gamma_range / 2.0)
+    epsilon = (
+        args.epsilon - args.epsilon_range / 2.0,
+        args.epsilon + args.epsilon_range / 2.0,
+    )
+    model = RandomizedOscillatorsNetwork(
+        n_inp=n_inp,
+        n_hid=args.n_hid,
+        dt=args.dt,
+        gamma=args.gamma,
+        epsilon=args.epsilon,
+        rho=args.rho,
+        input_scaling=args.input_scaling,
+        device=device)
+    model.to(device)
+
+    activations, ys = [], []
+    for x, y in tqdm(train_loader):
+        x = x.to(device)
+        output = model(x)[-1][0]
+        activations.append(output.cpu())
+        ys.append(y)
+    activations = torch.cat(activations, dim=0).numpy()
+    ys = torch.cat(ys, dim=0).squeeze().numpy()
+    scaler = preprocessing.StandardScaler().fit(activations)
+    activations = scaler.transform(activations)
+    classifier = LogisticRegression(max_iter=1000).fit(activations, ys)
+    train_acc = test(train_loader, classifier, scaler)
+    valid_acc = test(valid_loader, classifier, scaler) if not args.use_test else 0.0
+    test_acc = test(test_loader, classifier, scaler) if args.use_test else 0.0
+
+    print(f"Train Accuracy: {train_acc*100:.2f}%")
+    print(f"Validation Accuracy: {valid_acc*100:.2f}%")
+    print(f"Test Accuracy: {test_acc*100:.2f}%")

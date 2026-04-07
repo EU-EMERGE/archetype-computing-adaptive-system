@@ -1,8 +1,7 @@
 import numpy as np
 from sklearn.model_selection import train_test_split
 import torch
-from ron import RandomizedOscillatorsNetwork
-from esn import DeepReservoir
+from acds.archetypes import RandomizedOscillatorsNetwork, DeepReservoir
 import argparse
 from tqdm import tqdm
 from sklearn import preprocessing

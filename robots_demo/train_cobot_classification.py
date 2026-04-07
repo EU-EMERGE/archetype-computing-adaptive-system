@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.decomposition import PCA
 from sklearn.model_selection import train_test_split
 import torch
-from ron import RandomizedOscillatorsNetwork
+from acds.archetypes import RandomizedOscillatorsNetwork
 import argparse
 from tqdm import tqdm
 from sklearn import preprocessing

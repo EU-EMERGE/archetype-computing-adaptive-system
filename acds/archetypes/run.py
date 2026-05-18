@@ -1,8 +1,7 @@
-import time
 from torch import nn
 import torch
 import numpy as np
-import pdb
+
 
 class UnicycleNetwork(nn.Module):
     def __init__(self, n_inp, n_units, dt, lin_stiff_min=0.1, lin_stiff_max=0.5, 
@@ -170,3 +169,62 @@ class UnicycleNetwork(nn.Module):
         
         print(f"Updated equilibrium distances based on initial positions")
         print(f"  Distance range: [{self.eq_distances_matrix.data.min():.4f}, {self.eq_distances_matrix.data.max():.4f}]")
+
+
+class UnicycleReservoir(nn.Module):
+    def __init__(self, n_inp, n_units, dt, n_out, lin_stiff_min=0.1, lin_stiff_max=0.5, 
+                 ang_stiff_min=0.1, ang_stiff_max=0.3, lin_damping_min=0.1, lin_damping_max=0.2,
+                 ang_damping_min=0.1, ang_damping_max=0.2, eq_dist_min=0.5, eq_dist_max=1.0,
+                 eq_dist_min_ang=0.0, eq_dist_max_ang=np.pi,
+                 lin_input_map=None, ang_input_map=None, n_connections=None, inp_bias=0, n_connections_anchor=2, 
+                 n_connections_ang=None, n_connections_anchor_ang=2, n_past_steps_readout=0) -> None:
+        super().__init__()
+        self.n_inp = n_inp
+        self.n_units = n_units
+        self.unicycle_network = UnicycleNetwork(n_inp, n_units, dt, lin_stiff_min=lin_stiff_min, lin_stiff_max=lin_stiff_max, 
+                 ang_stiff_min=ang_stiff_min, ang_stiff_max=ang_stiff_max, lin_damping_min=lin_damping_min, lin_damping_max=lin_damping_max,
+                 ang_damping_min=ang_damping_min, ang_damping_max=ang_damping_max, eq_dist_min=eq_dist_min, eq_dist_max=eq_dist_max,
+                 eq_dist_min_ang=eq_dist_min_ang, eq_dist_max_ang=eq_dist_max_ang,
+                 lin_input_map=None, ang_input_map=None, n_connections=n_connections, n_connections_anchor=n_connections_anchor, 
+                 n_connections_ang=n_connections_ang, n_connections_anchor_ang=n_connections_anchor_ang)
+        self.readout = nn.Linear(n_units*5*(n_past_steps_readout+1), n_out)
+
+        self.inp_bias=inp_bias
+        self.n_past_steps_readout = n_past_steps_readout
+
+        if lin_input_map is None:
+            lin_input_map = torch.rand(n_inp, n_units)
+            self.lin_input_map = nn.Parameter(lin_input_map, requires_grad=False)
+        else:
+            self.lin_input_map = lin_input_map
+        if ang_input_map is None:
+            ang_input_map = torch.rand(n_inp, n_units)
+            self.ang_input_map = nn.Parameter(ang_input_map, requires_grad=False)
+        else:
+            self.ang_input_map = ang_input_map
+    
+    def forward(self, u_lin, u_ang):
+        #start = time.time()
+
+        x = self.x_init
+        z = self.z_init
+        theta = self.theta_init
+        s = self.s_init
+        omega = self.omega_init
+        states_list = []
+
+        for t in range(u_lin.size()[1]):
+            linear_input = (u_lin[:, t] +self.inp_bias) @ self.lin_input_map
+            angular_input = (u_ang[:, t]) @ self.ang_input_map
+            x, z, theta, s, omega = self.unicycle_network(linear_input, angular_input, x, z, theta, s, omega)
+
+            concatenated_states = torch.hstack((x, z, theta, s, omega))
+            states_list.append(concatenated_states)
+
+        if self.n_past_steps_readout > 0:
+            mid_states_idxs = [(int(u_lin.size()[1] / self.n_past_steps_readout) - 1)*k for k in range(1,self.n_past_steps_readout+1)]
+            mid_states = torch.hstack(([states_list[idx] for idx in mid_states_idxs]))
+        else:
+            mid_states = states_list[-1]
+        output = None
+        return states_list, output, mid_states

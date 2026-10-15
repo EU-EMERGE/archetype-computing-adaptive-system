@@ -1,5 +1,5 @@
 # Archetype Computing and Adaptive System (ACDS)
-<img src="./credit.svg">
+<img src="https://raw.githubusercontent.com/EU-EMERGE/archetype-computing-adaptive-system/main/credit.svg" alt="EMERGE project funding acknowledgements">
 
 Archetype Computing and Adapting System for the [EMERGE project](https://eic-emerge.eu/), a project funded by the European Innovation Council (EIC) of the European Union (EU) under Grant Agreement 101070918.
 
@@ -37,17 +37,58 @@ The logging functionalities remain the same across the three experiments. Each e
 The `robots_demo` package provides the code to run the EMERGE demo. Please, note that data is not shared through GitHub. 
 
 ## How to use
-The project requires Python 3. To install the acds package, it is sufficient to run
-the following lines of code:
+The project requires Python 3.11 or newer. Install from a checkout with pip:
+
 ```bash
-    git clone https//github.com/EU-EMERGE/archetype-computing-adaptive-system
-    cd archetype-computing-adaptive-system
-    make install
+git clone https://github.com/EU-EMERGE/archetype-computing-adaptive-system.git
+cd archetype-computing-adaptive-system
+python -m pip install .
 ```
 
-If you have already an environment with all the dependencies, you can use the library by directly adding the main project folder to your PYTHONPATH:  
+For development, install the package in editable mode with the development tools:
+
 ```bash
-    export PYTHONPATH=$PYTHONPATH:/path/to/archetype-computing-adaptive-system
+python -m pip install -e ".[dev]"
+```
+
+`make install` also installs the package in editable mode into the active Python
+environment. With conda, activate the environment first (for example,
+`conda activate tomato`) and use `make install PYTHON=python`.
+
+The first PyPI release will be **1.0.0**. Once it is published, install it with:
+
+```bash
+python -m pip install acds
+# Or pin the first release:
+python -m pip install "acds==1.0.0"
+```
+
+The distribution and Python import are both named `acds`. These PyPI commands
+become available after the first release; use the checkout instructions above
+until then.
+
+The `evolutionary` extra installs dependencies for `acds.evolutionary`:
+
+```bash
+python -m pip install ".[evolutionary]"
+# After the PyPI release:
+python -m pip install "acds[evolutionary]"
+```
+
+Graphviz rendering also requires the system Graphviz installation and its `dot`
+executable. Experiments and robot demos run from the source checkout and may need
+additional experiment-specific dependencies and external data.
+
+For example, a model can be created without downloading any datasets:
+
+```python
+import torch
+from acds.archetypes import RandomizedOscillatorsNetwork
+
+model = RandomizedOscillatorsNetwork(
+    n_inp=1, n_hid=100, dt=0.01, gamma=1.0, epsilon=1.0
+)
+states, final_state = model(torch.randn(8, 50, 1))
 ```
 
 If you want to run the sMNIST experiment with the RON model you can run:
@@ -56,10 +97,26 @@ If you want to run the sMNIST experiment with the RON model you can run:
 ```
 
 ## Dataset directory
-The library provides a directory to store raw datasets. The path is `acds/benchmarks/raw`.  
+The library bundles raw datasets in `acds/benchmarks/raw` in both the wheel and
+source distribution.
 The directory contains the `adiac` folder where both train and test examples for Adiac are stored. 
 It also contains the `mackey_glass.csv` file, where the Mackey-Glass dataset is saved. 
-You can point the `dataroot` parameter to this directory to use the datasets provided or to download the dataset there (when automatic download is possible, like for MNIST).
+Locate these files after installing the package with:
+
+```python
+from pathlib import Path
+import acds.benchmarks
+
+raw = Path(acds.benchmarks.__file__).parent / "raw"
+train, validation, test = acds.benchmarks.get_adiac_data(
+    raw / "adiac", bs_train=32, bs_test=64
+)
+```
+
+Use a writable directory outside the installed package for downloaded datasets
+such as MNIST, and pass that directory as the experiment's `dataroot`.
 
 ## Results
 Results of the experiments are saved within the `resultroot` directory, provided as parameter to each script. Remember to create the directory before using it.
+
+

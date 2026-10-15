@@ -9,8 +9,9 @@ from tqdm import tqdm
 
 from acds.archetypes import (
     DeepReservoir,
+    DeepEuESN,
     RandomizedOscillatorsNetwork,
-VanDerPolOscillatorsNetwork,    #new model of RRN - Van Der Pol Oscillator Network
+    VanDerPolOscillatorsNetwork,    #new model of RRN - Van Der Pol Oscillator Network
     PhysicallyImplementableRandomizedOscillatorsNetwork,
     MultistablePhysicallyImplementableRandomizedOscillatorsNetwork,
 )
@@ -50,6 +51,7 @@ parser.add_argument(
 )
 parser.add_argument("--cpu", action="store_true")
 parser.add_argument("--esn", action="store_true")
+parser.add_argument("--euesn", action="store_true")
 parser.add_argument("--ron", action="store_true")
 parser.add_argument("--vdpon", action="store_true")
 parser.add_argument("--pron", action="store_true")
@@ -77,6 +79,15 @@ parser.add_argument(
     type=float,
     default=1.0,
     help="Scaler in case of ring/band/toeplitz reservoir",
+)
+parser.add_argument(
+    "--eu_epsilon", type=float, default=1.0, help="epsilon parameter of EuESN"
+)
+parser.add_argument(
+    "--eu_gamma", type=float, default=1.0, help="gamma parameter of EuESN"
+)
+parser.add_argument(
+    "--eu_recur_scaling", type=float, default=1.0, help="recurrent scaling parameter of EuESN"
 )
 
 args = parser.parse_args()
@@ -146,6 +157,15 @@ for i in range(args.trials):
             connectivity_recurrent=int((1 - args.sparsity) * args.n_hid),
             connectivity_input=args.n_hid,
             leaky=args.leaky,
+        ).to(device)
+    elif args.euesn:
+        model = DeepEuESN(
+            n_inp,
+            tot_units=args.n_hid,
+            input_scaling=args.inp_scaling,
+            epsilon=args.eu_epsilon,
+            gamma=args.eu_gamma,
+            recur_scaling=args.eu_recur_scaling,
         ).to(device)
     elif args.ron:
         model = RandomizedOscillatorsNetwork(
@@ -233,6 +253,8 @@ elif args.mspron:
     f = open(os.path.join(args.resultroot, f"sMNIST_log_MSPRON{args.resultsuffix}.txt"), "a")
 elif args.esn:
     f = open(os.path.join(args.resultroot, f"sMNIST_log_ESN{args.resultsuffix}.txt"), "a")
+elif args.euesn:
+    f = open(os.path.join(args.resultroot, f"sMNIST_log_EUESN{args.resultsuffix}.txt"), "a")
 else:
     raise ValueError("Wrong model choice.")
 

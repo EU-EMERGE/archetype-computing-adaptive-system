@@ -1,25 +1,73 @@
-[tool.poetry]
+[project]
 name = "acds"
-version = "0.1.0"
+version = "1.0.0"
 description = "Archetype Computing Adaptive System"
-authors = ["Valerio De Caro <43961074+vdecaro@users.noreply.github.com>"]
+authors = [
+    { name = "Valerio De Caro", email = "43961074+vdecaro@users.noreply.github.com" },
+]
 readme = "README.md"
+requires-python = ">=3.11"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+keywords = ["reservoir-computing", "recurrent-neural-networks", "oscillators", "pytorch"]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.2.1",
+    "numpy>=1.26.4",
+    "scipy>=1.12.0",
+    "torchvision>=0.17.1",
+    "aeon>=1.0",
+    "scikit-learn>=1.3",
+    "sktime>=0.30",
+]
+
+[project.optional-dependencies]
+evolutionary = [
+    "gymnasium",
+    "neat-python",
+    "deap",
+    "matplotlib",
+    "pillow",
+    "imageio",
+    "graphviz",
+]
+dev = ["build>=1.2", "twine>=6", "pre-commit>=3.6", "commitizen>=3.16"]
+docs = ["sphinx>=7", "sphinx-rtd-theme>=2"]
+
+[project.urls]
+Homepage = "https://eic-emerge.eu/"
+Documentation = "https://eu-emerge.github.io/archetype-computing-adaptive-system/"
+Repository = "https://github.com/EU-EMERGE/archetype-computing-adaptive-system"
+Issues = "https://github.com/EU-EMERGE/archetype-computing-adaptive-system/issues"
+
+[tool.poetry]
+packages = [{ include = "acds" }]
+include = [
+    { path = "acds/benchmarks/raw", format = ["sdist", "wheel"] },
+    { path = "tests", format = "sdist" },
+    { path = "Makefile", format = "sdist" },
+]
+exclude = ["acds/benchmarks/MNIST", "**/__pycache__", "**/*.pyc"]
 
 [tool.poetry.dependencies]
-python = ">=3.11"
-torch = ">=2.2.1"
-numpy = ">=1.26.4"
-scipy = ">=1.12.0"
-torchvision = ">=0.17.1"
-
+# Limit the lockfile's resolution range without capping pip's Python requirement.
+python = ">=3.11,<3.15"
 
 [build-system]
-requires = ["poetry-core"]
+requires = ["poetry-core>=2.2,<3"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.1.0"
+version = "1.0.0"
+version_provider = "pep621"
 tag_format = "$version"
 
 [tool.isort]

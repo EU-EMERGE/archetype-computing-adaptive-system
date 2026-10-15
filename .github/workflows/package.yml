@@ -1,0 +1,51 @@
+name: Build and test package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install build tools
+        run: python -m pip install build twine
+      - name: Build source distribution and wheel
+        run: python -m build
+      - name: Validate distribution metadata and README
+        run: python -m twine check --strict dist/*
+      - name: Install CPU PyTorch
+        run: python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+      - name: Install the built wheel and evolutionary dependencies
+        shell: bash
+        run: |
+          wheels=(dist/*.whl)
+          python -m pip install "${wheels[0]}[evolutionary]"
+          python -m pip check
+      - name: Test the installed package outside the checkout
+        run: |
+          cd "$RUNNER_TEMP"
+          python -I -m unittest discover -s "$GITHUB_WORKSPACE/tests" -v
+      - name: Store validated distributions
+        if: matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v5
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error

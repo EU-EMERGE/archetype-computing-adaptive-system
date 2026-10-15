@@ -1,6 +1,8 @@
 results_collective/
 results_single/
-
+acds/benchmarks/MNIST/
+results/
+optuna_databases/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 .idea/
